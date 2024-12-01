@@ -40,33 +40,33 @@ class LuminousFlow:
                     "step": 0.1
                 }),
                 "glow_intensity": ("FLOAT", {
-                    "default": 8.0,
+                    "default": 12.0,
                     "min": 0.1,
-                    "max": 15.0,
+                    "max": 20.0,
                     "step": 0.1
                 }),
                 "darkness": ("FLOAT", {
-                    "default": 0.02,
+                    "default": 0.01,
                     "min": 0.0,
                     "max": 1.0,
                     "step": 0.01
                 }),
                 "vibrancy": ("FLOAT", {
-                    "default": 7.0,
+                    "default": 8.0,
                     "min": 0.1,
-                    "max": 10.0,
+                    "max": 15.0,
                     "step": 0.1
                 }),
                 "glow_spread": ("INT", {
-                    "default": 6,
+                    "default": 7,
                     "min": 0,
-                    "max": 10,
+                    "max": 12,
                     "step": 1
                 }),
                 "contrast": ("FLOAT", {
-                    "default": 3.0,
+                    "default": 4.0,
                     "min": 0.1,
-                    "max": 8.0,
+                    "max": 10.0,
                     "step": 0.1
                 })
             }
@@ -77,32 +77,37 @@ class LuminousFlow:
     CATEGORY = "image/effects"
 
     def enhance_colors(self, color, vibrancy, contrast):
-        """Enhanced color processing with more aggressive enhancement"""
+        """Enhanced color processing with neon effect"""
         # Convert to HSV for better color manipulation
         color_rgb = np.clip(color * 255, 0, 255).astype(np.uint8).reshape(1, 1, 3)
         color_hsv = cv2.cvtColor(color_rgb, cv2.COLOR_RGB2HSV)
         
-        # More aggressive saturation enhancement
-        color_hsv[0, 0, 1] = np.clip(color_hsv[0, 0, 1] * vibrancy * 1.2, 0, 255)
+        # Super aggressive saturation enhancement
+        color_hsv[0, 0, 1] = np.clip(color_hsv[0, 0, 1] * vibrancy * 1.5, 0, 255)
         
-        # Enhanced value/brightness
-        color_hsv[0, 0, 2] = np.clip(color_hsv[0, 0, 2] * contrast * 1.3, 0, 255)
+        # Enhanced value/brightness with extra pop
+        color_hsv[0, 0, 2] = np.clip(color_hsv[0, 0, 2] * contrast * 1.5, 0, 255)
         
         # Convert back to RGB
         enhanced_rgb = cv2.cvtColor(color_hsv, cv2.COLOR_HSV2RGB)
         enhanced_color = enhanced_rgb[0, 0] / 255.0
         
-        # Additional contrast enhancement with gamma correction
-        enhanced_color = np.power(enhanced_color, 0.85)  # Gamma correction to boost midtones
+        # Additional contrast enhancement with more aggressive gamma
+        enhanced_color = np.power(enhanced_color, 0.7)
         enhanced_color = np.power(enhanced_color, 1/contrast)
         
-        return enhanced_color
+        # Extra boost to bright areas
+        enhanced_color = np.where(enhanced_color > 0.5, 
+                                enhanced_color * 1.3,
+                                enhanced_color * 0.7)
+        
+        return np.clip(enhanced_color, 0, 1)
 
     def draw_line(self, img, start_point, end_point, color, thickness=1, glow_spread=0):
-        """Enhanced glow effect with stronger center"""
+        """Enhanced glow effect with neon quality"""
         if glow_spread > 0:
-            # Create more intense central glow
-            center_glow = color * 2.0
+            # Create super intense central glow
+            center_glow = color * 2.5
             cv2.line(img, 
                     (int(start_point[0]), int(start_point[1])), 
                     (int(end_point[0]), int(end_point[1])), 
@@ -110,21 +115,30 @@ class LuminousFlow:
                     thickness + 2,
                     cv2.LINE_AA)
             
-            # Create multiple layers of glow for more intensity
+            # Create multiple layers of glow with increased intensity
             for i in range(glow_spread, 0, -1):
-                glow_color = color * (2.0 / (i + 0.3))
+                glow_color = color * (2.5 / (i + 0.2))
                 cv2.line(img, 
                         (int(start_point[0]), int(start_point[1])), 
                         (int(end_point[0]), int(end_point[1])), 
                         np.clip(glow_color, 0, 1).tolist(),
                         thickness + i*2,
                         cv2.LINE_AA)
+            
+            # Add an extra intense inner glow
+            inner_glow = color * 3.0
+            cv2.line(img, 
+                    (int(start_point[0]), int(start_point[1])), 
+                    (int(end_point[0]), int(end_point[1])), 
+                    np.clip(inner_glow, 0, 1).tolist(),
+                    thickness + 1,
+                    cv2.LINE_AA)
         
-        # Draw main line with slightly increased intensity
+        # Draw main line with increased intensity
         cv2.line(img, 
                 (int(start_point[0]), int(start_point[1])), 
                 (int(end_point[0]), int(end_point[1])), 
-                np.clip(color * 1.2, 0, 1).tolist(),
+                np.clip(color * 1.5, 0, 1).tolist(),
                 thickness,
                 cv2.LINE_AA)
 
@@ -134,15 +148,16 @@ class LuminousFlow:
         print(f"\nProcessing image {batch_idx + 1}/{total_batches}")
         print(f"Image size: {width}x{height}")
         
-        # Enhanced preprocessing
+        # Enhanced preprocessing with more contrast
         intensity_map = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         intensity_map = cv2.GaussianBlur(intensity_map, (3, 3), 0)
         
-        # Enhance contrast in intensity map
-        intensity_map = np.power(intensity_map, params["contrast"])
+        # More aggressive contrast in intensity map
+        intensity_map = np.power(intensity_map, params["contrast"] * 1.2)
         intensity_map = (intensity_map - intensity_map.min()) / (intensity_map.max() - intensity_map.min() + 1e-7)
         
-        background = img * params["darkness"]
+        # Create darker background
+        background = img * params["darkness"] * 0.8
         canvas = background.copy()
         
         max_lines = (height - 2 * params["line_spacing"]) // params["line_spacing"]
