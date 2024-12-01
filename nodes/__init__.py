@@ -7,13 +7,13 @@ from .interference import interference
 from .interferenceV2 import interferenceV2
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
-from .GlitchArtNode import GlitchArtNode
 from .Peaks import Peaks
 from .PixelFloat import PixelFloat
 from .PixelRedistribution import PixelRedistribution
 from .Rekked import Rekked
 from .TvGlitch import TvGlitch
 from .VaporWave import VaporWave
+from .VHSonAcid import VHSonAcid
 from .VideoModulation import VideoModulation
 
 NODE_CLASS_MAPPINGS = {
@@ -26,13 +26,13 @@ NODE_CLASS_MAPPINGS = {
     "interferenceV2": interferenceV2,
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
-    "GlitchArtNode": GlitchArtNode,
     "Peaks": Peaks,
     "PixelFloat": PixelFloat,
     "PixelRedistribution": PixelRedistribution,
     "Rekked": Rekked,
     "TvGlitch": TvGlitch,
     "VaporWave": VaporWave,
+    "VHSonAcid": VHSonAcid,
     "VideoModulation": VideoModulation,
 }
 
@@ -46,13 +46,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "interferenceV2": "interferenceV2 WIP | GlitchNodes",
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
-    "GlitchArtNode": "GlitchArtNode | GlitchNodes",
     "Peaks": "Peaks | GlitchNodes",
     "PixelFloat": "PixelFloat | GlitchNodes",
     "PixelRedistribution": "PixelRedistribution WIP | PXLGlitchNodesPSHR",
     "Rekked": "Rekked WIP | GlitchNodes",
     "TvGlitch": "TV Glitch | GlitchNodes",
     "VaporWave": "VaporWave | GlitchNodes",
+    "VHSonAcid": "VHSonAcid | GlitchNodes",
     "VideoModulation": "VideoModulation | GlitchNodes",
 }
 

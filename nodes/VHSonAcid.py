@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 
-class GlitchArtNode:
+class VHSonAcid:
     @classmethod
     def INPUT_TYPES(cls):
         return {
