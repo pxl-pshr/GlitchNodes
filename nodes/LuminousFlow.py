@@ -40,33 +40,33 @@ class LuminousFlow:
                     "step": 0.1
                 }),
                 "glow_intensity": ("FLOAT", {
-                    "default": 5.0,
+                    "default": 8.0,
                     "min": 0.1,
-                    "max": 10.0,
+                    "max": 15.0,
                     "step": 0.1
                 }),
                 "darkness": ("FLOAT", {
-                    "default": 0.05,
+                    "default": 0.02,
                     "min": 0.0,
                     "max": 1.0,
-                    "step": 0.05
+                    "step": 0.01
                 }),
                 "vibrancy": ("FLOAT", {
-                    "default": 4.0,
+                    "default": 7.0,
                     "min": 0.1,
-                    "max": 5.0,
+                    "max": 10.0,
                     "step": 0.1
                 }),
                 "glow_spread": ("INT", {
                     "default": 6,
                     "min": 0,
-                    "max": 7,
+                    "max": 10,
                     "step": 1
                 }),
                 "contrast": ("FLOAT", {
-                    "default": 1.5,
+                    "default": 3.0,
                     "min": 0.1,
-                    "max": 5.0,
+                    "max": 8.0,
                     "step": 0.1
                 })
             }
@@ -77,30 +77,32 @@ class LuminousFlow:
     CATEGORY = "image/effects"
 
     def enhance_colors(self, color, vibrancy, contrast):
-        """Enhanced color processing with improved vibrancy and contrast"""
+        """Enhanced color processing with more aggressive enhancement"""
         # Convert to HSV for better color manipulation
         color_rgb = np.clip(color * 255, 0, 255).astype(np.uint8).reshape(1, 1, 3)
         color_hsv = cv2.cvtColor(color_rgb, cv2.COLOR_RGB2HSV)
         
-        # Enhance saturation
-        color_hsv[0, 0, 1] = np.clip(color_hsv[0, 0, 1] * vibrancy, 0, 255)
+        # More aggressive saturation enhancement
+        color_hsv[0, 0, 1] = np.clip(color_hsv[0, 0, 1] * vibrancy * 1.2, 0, 255)
         
-        # Enhance value (brightness)
-        color_hsv[0, 0, 2] = np.clip(color_hsv[0, 0, 2] * contrast, 0, 255)
+        # Enhanced value/brightness
+        color_hsv[0, 0, 2] = np.clip(color_hsv[0, 0, 2] * contrast * 1.3, 0, 255)
         
         # Convert back to RGB
         enhanced_rgb = cv2.cvtColor(color_hsv, cv2.COLOR_HSV2RGB)
         enhanced_color = enhanced_rgb[0, 0] / 255.0
         
-        # Additional contrast enhancement
+        # Additional contrast enhancement with gamma correction
+        enhanced_color = np.power(enhanced_color, 0.85)  # Gamma correction to boost midtones
         enhanced_color = np.power(enhanced_color, 1/contrast)
+        
         return enhanced_color
 
     def draw_line(self, img, start_point, end_point, color, thickness=1, glow_spread=0):
-        """Draw an anti-aliased line with enhanced glow effect"""
+        """Enhanced glow effect with stronger center"""
         if glow_spread > 0:
             # Create more intense central glow
-            center_glow = color * 1.5
+            center_glow = color * 2.0
             cv2.line(img, 
                     (int(start_point[0]), int(start_point[1])), 
                     (int(end_point[0]), int(end_point[1])), 
@@ -108,9 +110,9 @@ class LuminousFlow:
                     thickness + 2,
                     cv2.LINE_AA)
             
-            # Create outer glow
+            # Create multiple layers of glow for more intensity
             for i in range(glow_spread, 0, -1):
-                glow_color = color * (1.5 / (i + 0.5))
+                glow_color = color * (2.0 / (i + 0.3))
                 cv2.line(img, 
                         (int(start_point[0]), int(start_point[1])), 
                         (int(end_point[0]), int(end_point[1])), 
@@ -118,11 +120,11 @@ class LuminousFlow:
                         thickness + i*2,
                         cv2.LINE_AA)
         
-        # Draw main line
+        # Draw main line with slightly increased intensity
         cv2.line(img, 
                 (int(start_point[0]), int(start_point[1])), 
                 (int(end_point[0]), int(end_point[1])), 
-                color.tolist(),
+                np.clip(color * 1.2, 0, 1).tolist(),
                 thickness,
                 cv2.LINE_AA)
 
