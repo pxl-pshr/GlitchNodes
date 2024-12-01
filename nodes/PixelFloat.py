@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import cv2
-from tqdm.rich import tqdm
+from tqdm import tqdm
 
 class PixelFloat:
     def __init__(self):
@@ -289,50 +289,47 @@ class PixelFloat:
         self.min_blocks = min_blocks
         self.max_blocks = max_blocks
         
-        # Configure tqdm progress bar
-        with tqdm(total=batch_size-1, 
-                 desc="Processing Frames", 
-                 unit="frame",
-                 position=0,
-                 leave=True,
-                 ncols=80,
-                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
-            
-            for i in range(batch_size-1):
+        # Simplified progress bar configuration
+        pbar = tqdm(range(batch_size-1), 
+                   desc="Processing frames",
+                   leave=True)
+        
+        try:
+            for i in pbar:
                 current_frame = frames_np[i].copy()
                 next_frame = frames_np[i+1].copy()
                 
                 current_frame = (current_frame * 255).astype(np.uint8)
                 next_frame = (next_frame * 255).astype(np.uint8)
                 
-                try:
-                    mvs, actual_block_size = self.estimate_motion_vectors(
-                        current_frame, 
-                        next_frame,
-                        flow_scale,
-                        flow_levels,
-                        flow_iterations,
-                        block_size,
-                        auto_block_size
-                    )
-                    modified_mvs = self.apply_anti_gravity(mvs, gravity_strength, motion_threshold)
-                    processed_frame = self.apply_motion_vectors(
-                        current_frame, 
-                        modified_mvs, 
-                        actual_block_size,
-                        interpolation_factor
-                    )
-                    
-                    processed_frame = processed_frame.astype(np.float32) / 255.0
-                    processed_frames.append(processed_frame)
-                    
-                    # Update progress bar
-                    pbar.update(1)
-                    # Force flush the output
-                    print("", flush=True, end="")
-                    
-                except Exception as e:
-                    raise RuntimeError(f"Error processing frame {i}: {str(e)}")
+                mvs, actual_block_size = self.estimate_motion_vectors(
+                    current_frame, 
+                    next_frame,
+                    flow_scale,
+                    flow_levels,
+                    flow_iterations,
+                    block_size,
+                    auto_block_size
+                )
+                modified_mvs = self.apply_anti_gravity(mvs, gravity_strength, motion_threshold)
+                processed_frame = self.apply_motion_vectors(
+                    current_frame, 
+                    modified_mvs, 
+                    actual_block_size,
+                    interpolation_factor
+                )
+                
+                processed_frame = processed_frame.astype(np.float32) / 255.0
+                processed_frames.append(processed_frame)
+                
+                # Update progress description with current frame
+                pbar.set_description(f"Processing frame {i+1}/{batch_size-1}")
+                
+            pbar.close()
+            
+        except Exception as e:
+            pbar.close()
+            raise RuntimeError(f"Error processing frame {i}: {str(e)}")
         
         processed_frames.append(frames_np[-1])
         processed_frames = np.stack(processed_frames)
