@@ -1,13 +1,11 @@
 from .Corruptor import Corruptor
 from .DataBend import DataBend
-from .dATAmOSH import dATAmOSH
 from .FrequencyModulation import FrequencyModulation
 from .GlitchIT import GlitchIT
 from .interference import interference
 from .interferenceV2 import interferenceV2
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
-from .Peaks import Peaks
 from .PixelFloat import PixelFloat
 from .PixelRedistribution import PixelRedistribution
 from .Rekked import Rekked
@@ -19,14 +17,12 @@ from .VideoModulation import VideoModulation
 NODE_CLASS_MAPPINGS = {
     "Corruptor": Corruptor,
     "DataBend": DataBend,
-    "dATAmOSH": dATAmOSH,
     "FrequencyModulation": FrequencyModulation,
     "GlitchIT": GlitchIT,
     "interference": interference,
     "interferenceV2": interferenceV2,
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
-    "Peaks": Peaks,
     "PixelFloat": PixelFloat,
     "PixelRedistribution": PixelRedistribution,
     "Rekked": Rekked,
@@ -39,14 +35,12 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Corruptor": "Corruptor | GlitchNodes",
     "DataBend": "DataBend | PXLPSHR",
-    "dATAmOSH": "░d░A░T░A░m░O░S░H░ | GlitchNodes",
     "FrequencyModulation": "Frequency Modulation | GlitchNodes",
     "GlitchIT": "GlitchIT | GlitchNodes",
     "interference": "interference | GlitchNodes",
     "interferenceV2": "interferenceV2 WIP | GlitchNodes",
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
-    "Peaks": "Peaks | GlitchNodes",
     "PixelFloat": "PixelFloat | GlitchNodes",
     "PixelRedistribution": "PixelRedistribution WIP | PXLGlitchNodesPSHR",
     "Rekked": "Rekked WIP | GlitchNodes",
