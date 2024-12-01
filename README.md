@@ -1,4 +1,4 @@
-# GlitchNodes                                                           
+# ComfyUI GlitchNodes                                                           
                           :::!~!!!!!:.
                       .xUHWH!! !!?M88WHX:.
                     .X*#M@$!!  !X!M$$$$$$WWx:.
