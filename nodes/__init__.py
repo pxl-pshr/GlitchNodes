@@ -9,6 +9,7 @@ from .LuminousFlow import LuminousFlow
 from .PixelFloat import PixelFloat
 from .PixelRedistribution import PixelRedistribution
 from .Rekked import Rekked
+from .Scanz import Scanz
 from .TvGlitch import TvGlitch
 from .VaporWave import VaporWave
 from .VHSonAcid import VHSonAcid
@@ -26,6 +27,7 @@ NODE_CLASS_MAPPINGS = {
     "PixelFloat": PixelFloat,
     "PixelRedistribution": PixelRedistribution,
     "Rekked": Rekked,
+    "Scanz": Scanz,
     "TvGlitch": TvGlitch,
     "VaporWave": VaporWave,
     "VHSonAcid": VHSonAcid,
@@ -44,6 +46,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixelFloat": "PixelFloat | GlitchNodes",
     "PixelRedistribution": "PixelRedistribution WIP | PXLGlitchNodesPSHR",
     "Rekked": "Rekked WIP | GlitchNodes",
+    "Scanz": "Scanz | GlitchNodes",
     "TvGlitch": "TV Glitch | GlitchNodes",
     "VaporWave": "VaporWave | GlitchNodes",
     "VHSonAcid": "VHSonAcid | GlitchNodes",
