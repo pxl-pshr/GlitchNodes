@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import logging
 from tqdm import tqdm
+import cv2
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -9,8 +10,7 @@ logger = logging.getLogger(__name__)
 class Corruptor:
     """
     A node that applies controlled corruption effects to images using wavelet transformations.
-    The corruption can be applied in both RGB and HSB color spaces, with adjustable intensity
-    through scaling factors for both the forward and backward transformations.
+    The corruption can be applied in multiple color spaces with adjustable intensity.
     """
     
     @classmethod
@@ -20,7 +20,8 @@ class Corruptor:
                 "image": ("IMAGE",),
                 "scaling_factor_in": ("FLOAT", {"default": 80.0, "min": 0.0, "max": 1000.0, "step": 0.1}),
                 "scaling_factor_out": ("FLOAT", {"default": 80.0, "min": 0.0, "max": 1000.0, "step": 0.1}),
-                "do_hsb": ("BOOLEAN", {"default": False}),
+                "noise_strength": ("FLOAT", {"default": 10.0, "min": 0.0, "max": 100.0, "step": 0.1}),
+                "color_space": (["RGB", "HSV", "LAB", "YUV"],),
                 "channels_combined": ("BOOLEAN", {"default": True})
             }
         }
@@ -29,7 +30,7 @@ class Corruptor:
     FUNCTION = "apply_glitch"
     CATEGORY = "image/processing"
 
-    def apply_glitch(self, image, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined):
+    def apply_glitch(self, image, scaling_factor_in, scaling_factor_out, noise_strength, color_space, channels_combined):
         """
         Main entry point for the corruption process.
         
@@ -37,7 +38,8 @@ class Corruptor:
             image: Input image tensor (N,H,W,C) or (H,W,C)
             scaling_factor_in: Controls corruption intensity in forward transform
             scaling_factor_out: Controls corruption intensity in reverse transform
-            do_hsb: Process in HSB color space if True, RGB if False
+            noise_strength: Controls the amount of random noise added
+            color_space: Color space to process in ("RGB", "HSV", "LAB", "YUV")
             channels_combined: Process all color channels together if True
         
         Returns:
@@ -47,10 +49,16 @@ class Corruptor:
             if image.dim() == 4:
                 results = []
                 for img in tqdm(image, desc="Processing batch"):
-                    results.append(self._process_single_image(img, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined))
+                    results.append(self._process_single_image(
+                        img, scaling_factor_in, scaling_factor_out, 
+                        noise_strength, color_space, channels_combined
+                    ))
                 result = torch.stack(results)
             else:
-                result = self._process_single_image(image, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined).unsqueeze(0)
+                result = self._process_single_image(
+                    image, scaling_factor_in, scaling_factor_out,
+                    noise_strength, color_space, channels_combined
+                ).unsqueeze(0)
             
             if result.shape[1] == 3:
                 result = result.permute(0, 2, 3, 1)
@@ -60,7 +68,7 @@ class Corruptor:
             logger.error(f"Error in corruption process: {str(e)}")
             raise
 
-    def _process_single_image(self, image, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined):
+    def _process_single_image(self, image, scaling_factor_in, scaling_factor_out, noise_strength, color_space, channels_combined):
         """
         Processes a single image through the corruption pipeline.
         Handles format conversions and applies the corruption effect.
@@ -73,7 +81,10 @@ class Corruptor:
             img_np = np.transpose(img_np, (1, 2, 0))
             img_np = np.clip(img_np * 255, 0, 255).astype(np.uint8)
             
-            corrupted_img = self.corrupt_image(img_np, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined)
+            corrupted_img = self.corrupt_image(
+                img_np, scaling_factor_in, scaling_factor_out,
+                noise_strength, color_space, channels_combined
+            )
             
             result = torch.from_numpy(corrupted_img).float() / 255.0
             result = result.permute(2, 0, 1)
@@ -83,29 +94,47 @@ class Corruptor:
             logger.error(f"Error in processing single image: {str(e)}")
             raise
 
-    def corrupt_image(self, img_np, scaling_factor_in, scaling_factor_out, do_hsb, channels_combined):
+    def corrupt_image(self, img_np, scaling_factor_in, scaling_factor_out, noise_strength, color_space, channels_combined):
         """
-        Applies the corruption effect to the image data.
-        Can process in RGB or HSB color space, with channels either combined or separate.
+        Applies the corruption effect to the image data in the specified color space.
         """
         try:
-            if do_hsb:
-                img_np = self.rgb_to_hsb(img_np)
+            # Convert to target color space
+            if color_space == "HSV":
+                img_converted = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+            elif color_space == "LAB":
+                img_converted = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+            elif color_space == "YUV":
+                img_converted = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
+            else:  # RGB
+                img_converted = img_np.copy()
 
             if channels_combined:
-                raw = img_np.reshape(-1)
+                raw = img_converted.reshape(-1)
                 corrupted = self.process_channel(raw, scaling_factor_in, scaling_factor_out)
-                corrupted = corrupted.reshape(img_np.shape)
+                corrupted = corrupted.reshape(img_converted.shape)
             else:
-                corrupted = np.zeros_like(img_np)
+                corrupted = np.zeros_like(img_converted)
                 for i in tqdm(range(3), desc="Processing channels"):
-                    channel = img_np[:,:,i].reshape(-1)
-                    corrupted[:,:,i] = self.process_channel(channel, scaling_factor_in, scaling_factor_out).reshape(img_np.shape[:2])
+                    channel = img_converted[:,:,i].reshape(-1)
+                    corrupted[:,:,i] = self.process_channel(
+                        channel, scaling_factor_in, scaling_factor_out
+                    ).reshape(img_converted.shape[:2])
 
-            corrupted = np.clip(corrupted + np.random.normal(0, 10, corrupted.shape), 0, 255)
+            # Add noise with controllable strength
+            if noise_strength > 0:
+                corrupted = np.clip(
+                    corrupted + np.random.normal(0, noise_strength, corrupted.shape),
+                    0, 255
+                )
 
-            if do_hsb:
-                corrupted = self.hsb_to_rgb(corrupted)
+            # Convert back to RGB
+            if color_space == "HSV":
+                corrupted = cv2.cvtColor(corrupted.astype(np.uint8), cv2.COLOR_HSV2RGB)
+            elif color_space == "LAB":
+                corrupted = cv2.cvtColor(corrupted.astype(np.uint8), cv2.COLOR_LAB2RGB)
+            elif color_space == "YUV":
+                corrupted = cv2.cvtColor(corrupted.astype(np.uint8), cv2.COLOR_YUV2RGB)
 
             return np.clip(corrupted, 0, 255).astype(np.uint8)
         except Exception as e:
@@ -177,52 +206,3 @@ class Corruptor:
         y[1::2] = (d[:a] - w[:a]) * np.sqrt(0.5)
         
         return y * scaling_factor
-
-    def rgb_to_hsb(self, rgb):
-        """
-        Converts RGB color space to HSB (HSV).
-        Used when do_hsb is True to process in HSB color space.
-        """
-        r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
-        max_val = np.max(rgb, axis=2)
-        min_val = np.min(rgb, axis=2)
-        diff = max_val - min_val
-        
-        h = np.zeros_like(r)
-        s = np.zeros_like(r)
-        v = max_val
-        
-        h[max_val == r] = (60 * ((g - b) / diff) % 360)[max_val == r]
-        h[max_val == g] = (120 + 60 * ((b - r) / diff))[max_val == g]
-        h[max_val == b] = (240 + 60 * ((r - g) / diff))[max_val == b]
-        h[diff == 0] = 0
-        
-        s[max_val != 0] = (diff / max_val)[max_val != 0]
-        
-        return np.stack([h, s, v], axis=2)
-
-    def hsb_to_rgb(self, hsb):
-        """
-        Converts HSB (HSV) color space back to RGB.
-        Used when do_hsb is True to convert back after processing.
-        """
-        h, s, v = hsb[:,:,0], hsb[:,:,1], hsb[:,:,2]
-        h = h / 360.0
-        
-        i = np.floor(h * 6)
-        f = h * 6 - i
-        p = v * (1 - s)
-        q = v * (1 - f * s)
-        t = v * (1 - (1 - f) * s)
-        
-        i = i.astype(int) % 6
-        
-        rgb = np.zeros_like(hsb)
-        rgb[i == 0] = np.dstack((v, t, p))[i == 0]
-        rgb[i == 1] = np.dstack((q, v, p))[i == 1]
-        rgb[i == 2] = np.dstack((p, v, t))[i == 2]
-        rgb[i == 3] = np.dstack((p, q, v))[i == 3]
-        rgb[i == 4] = np.dstack((t, p, v))[i == 4]
-        rgb[i == 5] = np.dstack((v, p, q))[i == 5]
-        
-        return np.clip(rgb * 255, 0, 255).astype(np.uint8)

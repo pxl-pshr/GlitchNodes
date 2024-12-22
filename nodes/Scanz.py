@@ -1,4 +1,3 @@
-# Part 1: Imports and class definition
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
