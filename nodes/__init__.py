@@ -36,7 +36,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Corruptor": "Corruptor | GlitchNodes",
-    "DataBend": "DataBend | PXLPSHR",
+    "DataBend": "DataBend | GlitchNodes",
     "FrequencyModulation": "Frequency Modulation | GlitchNodes",
     "GlitchIT": "GlitchIT | GlitchNodes",
     "interference": "interference | GlitchNodes",
