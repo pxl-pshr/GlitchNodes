@@ -43,7 +43,7 @@ Image processing node that applies controlled corruption effects using wavelet t
 <img src="https://i.postimg.cc/PrKFgyHc/Corruptor-Image-00001.png" width="400">
 </td>
 <td>
-<img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZGp0Zmd1NXg2cndjazFyc3A5Yjd1a3N0ZzVrdWN1djg2cXd5N3hicCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/9QL6Eqxnv1OD1yOSS7/giphy.gif" width="400">
+<img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdXBqbmltZ2NzamhpbGNienY3aWt5Mm5pc2Q5YjB1eGJxaGRocHgyNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/4CLt8ID5tFDVi6nQov/giphy.gif" width="400">
 </td>
 </tr>
 </table>
