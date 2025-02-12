@@ -3,7 +3,6 @@ from .DataBend import DataBend
 from .FrequencyModulation import FrequencyModulation
 from .GlitchIT import GlitchIT
 from .interference import interference
-from .interferenceV2 import interferenceV2
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
 from .PixelFloat import PixelFloat
@@ -21,7 +20,6 @@ NODE_CLASS_MAPPINGS = {
     "FrequencyModulation": FrequencyModulation,
     "GlitchIT": GlitchIT,
     "interference": interference,
-    "interferenceV2": interferenceV2,
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
     "PixelFloat": PixelFloat,
@@ -37,14 +35,13 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Corruptor": "Corruptor | GlitchNodes",
     "DataBend": "DataBend | GlitchNodes",
-    "FrequencyModulation": "Frequency Modulation | GlitchNodes",
+    "FrequencyModulation": "Frequency Modulation WIP | GlitchNodes",
     "GlitchIT": "GlitchIT | GlitchNodes",
     "interference": "interference | GlitchNodes",
-    "interferenceV2": "interferenceV2 WIP | GlitchNodes",
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
     "PixelFloat": "PixelFloat | GlitchNodes",
-    "PixelRedistribution": "PixelRedistribution WIP | PXLGlitchNodesPSHR",
+    "PixelRedistribution": "PixelRedistribution WIP | GlitchNodes",
     "Rekked": "Rekked WIP | GlitchNodes",
     "Scanz": "Scanz | GlitchNodes",
     "TvGlitch": "TV Glitch | GlitchNodes",

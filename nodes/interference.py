@@ -1,9 +1,11 @@
+# https://x.com/_pxlpshr
+
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 import time
 
-class interference:
+class interferenceV2:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -27,31 +29,13 @@ class interference:
                     "max": 10,
                     "step": 1
                 }),
-                "edge_strength": ("FLOAT", {
-                    "default": 0.5,
-                    "min": 0.0,
-                    "max": 5.0,
-                    "step": 0.1
-                }),
-                "edge_threshold": ("FLOAT", {
-                    "default": 0.1,
-                    "min": 0.0,
-                    "max": 1.0,
-                    "step": 0.05
-                }),
-                "detail_persistence": ("FLOAT", {
-                    "default": 0.5,
-                    "min": 0.0,
-                    "max": 1.0,
-                    "step": 0.1
-                }),
                 "color_shift": ("FLOAT", {
                     "default": 0.5,
                     "min": 0.0,
                     "max": 1.0,
                     "step": 0.1
                 }),
-                "color_mode": (["monochrome", "rainbow", "duotone", "invert", "edge_highlight"],),
+                "color_mode": (["monochrome", "rainbow", "duotone", "invert"],),
                 "preserve_brightness": ("BOOLEAN", {"default": True}),
             }
         }
@@ -60,57 +44,25 @@ class interference:
     FUNCTION = "apply_sort_shader"
     CATEGORY = "image/postprocessing"
 
-    def detect_edges(self, img):
-        # Convert to grayscale first
-        gray = 0.299 * img[..., 0] + 0.587 * img[..., 1] + 0.114 * img[..., 2]
-        gray = gray.unsqueeze(1)  # Add channel dimension [B, 1, H, W]
-
-        # Sobel kernels
-        kernel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], 
-                              device=img.device).float().view(1, 1, 3, 3)
-        kernel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], 
-                              device=img.device).float().view(1, 1, 3, 3)
-
-        # Apply convolution
-        grad_x = F.conv2d(gray, kernel_x, padding=1)
-        grad_y = F.conv2d(gray, kernel_y, padding=1)
-
-        # Calculate magnitude
-        magnitude = torch.sqrt(grad_x**2 + grad_y**2)
-        
-        # Normalize
-        magnitude = magnitude / magnitude.max()
-        
-        # Expand to match input channels
-        magnitude = magnitude.expand(-1, 3, -1, -1)
-        
-        return magnitude.permute(0, 2, 3, 1)  # [B, H, W, C]
-
     def apply_sort_shader(self, image, horizontal_iterations, vertical_iterations, 
-                         shift_amount, edge_strength, edge_threshold, detail_persistence,
-                         color_shift, color_mode, preserve_brightness):
+                         shift_amount, color_shift, color_mode, preserve_brightness):
         start_time = time.time()
         
         image = image.float()
         B, H, W, C = image.shape
 
-        # Detect edges
-        edges = self.detect_edges(image)
-        edge_mask = (edges > edge_threshold).float()
-        
         def hash(x):
             return torch.frac(torch.sin(x * 12.9898 + x * 78.233) * 43758.5453)
 
         def cv(c):
-            # Include edge information in the comparison value
-            edge_val = edges.mean(dim=-1, keepdim=True) * edge_strength
-            return c.sum(dim=-1) + edge_val.squeeze(-1) * detail_persistence
-
-        def apply_color_effect(img, color_val, edge_info):
+            return c.sum(dim=-1)
+        
+        def apply_color_effect(img, color_val):
             if color_mode == "monochrome":
                 return img
             
             elif color_mode == "rainbow":
+                # Create rainbow effect based on pixel position and hash
                 hue = (hash(color_val) * color_shift).unsqueeze(-1).expand(-1, -1, -1, C)
                 if preserve_brightness:
                     brightness = img.mean(dim=-1, keepdim=True)
@@ -118,20 +70,16 @@ class interference:
                 return img + hue
             
             elif color_mode == "duotone":
-                color1 = torch.tensor([0.8, 0.2, 0.2]).to(img.device)
-                color2 = torch.tensor([0.2, 0.2, 0.8]).to(img.device)
+                # Create a two-color effect
+                color1 = torch.tensor([0.8, 0.2, 0.2]).to(img.device)  # Reddish
+                color2 = torch.tensor([0.2, 0.2, 0.8]).to(img.device)  # Bluish
                 mask = (hash(color_val) > 0.5).unsqueeze(-1)
                 return torch.where(mask, img * color1, img * color2)
             
             elif color_mode == "invert":
+                # Selectively invert colors based on hash value
                 mask = (hash(color_val) > 0.5).unsqueeze(-1)
                 return torch.where(mask, 1.0 - img, img)
-            
-            elif color_mode == "edge_highlight":
-                # Highlight edges with a glowing effect
-                edge_glow = torch.clamp(edge_info * 2.0, 0, 1)
-                glow_color = torch.tensor([1.0, 0.7, 0.3]).to(img.device)  # Golden glow
-                return torch.lerp(img, glow_color.view(1, 1, 1, 3), edge_glow)
             
             return img
 
@@ -148,11 +96,7 @@ class interference:
                           torch.where(cv1.unsqueeze(-1) > cv2.unsqueeze(-1), c1, c2))
             )
             
-            # Apply edge preservation
-            edge_preserve = edge_mask * detail_persistence
-            result = torch.lerp(result, image, edge_preserve)
-            
-            return apply_color_effect(result, cv1, edges)
+            return apply_color_effect(result, cv1)
 
         def compare_h(c1, c2, p, i):
             condition = (p[..., 1] % 2) != (i % 2)
@@ -167,11 +111,7 @@ class interference:
                           torch.where(cv1.unsqueeze(-1) > cv2.unsqueeze(-1), c1, c2))
             )
             
-            # Apply edge preservation
-            edge_preserve = edge_mask * detail_persistence
-            result = torch.lerp(result, image, edge_preserve)
-            
-            return apply_color_effect(result, cv1, edges)
+            return apply_color_effect(result, cv1)
 
         pos = torch.stack(torch.meshgrid(torch.arange(H), torch.arange(W)), dim=-1).to(image.device)
         pos = pos.unsqueeze(0).expand(B, -1, -1, -1)
@@ -192,6 +132,7 @@ class interference:
             print(f"Vertical sort: {v_time:.3f}s")
             return image
 
+        # Apply sorting with progress bars
         if horizontal_iterations > 0:
             image = sort_horizontal(image, horizontal_iterations)
         if vertical_iterations > 0:
@@ -201,7 +142,3 @@ class interference:
         print(f"Total time: {total_time:.3f}s")
 
         return (image,)
-
-NODE_CLASS_MAPPINGS = {
-    "interference": interference
-}

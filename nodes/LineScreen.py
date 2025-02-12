@@ -1,3 +1,5 @@
+# https://x.com/_pxlpshr
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 import math

@@ -1,3 +1,6 @@
+# Original Styles from https://github.com/Datamosh-js/datamosh
+# https://x.com/_pxlpshr
+
 import numpy as np
 import torch
 

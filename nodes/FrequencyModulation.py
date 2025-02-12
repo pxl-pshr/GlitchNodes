@@ -1,3 +1,5 @@
+# https://x.com/_pxlpshr
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -9,8 +11,8 @@ class FrequencyModulation:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "carrier_frequency": ("FLOAT", {"default": 3.0, "min": 0.01, "max": 10.0, "step": 0.01}),
-                "bandwidth": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "carrier_frequency": ("FLOAT", {"default": 10, "min": 0.01, "max": 10.0, "step": 0.01}),
+                "bandwidth": ("FLOAT", {"default": 10, "min": 0.1, "max": 10.0, "step": 0.1}),
                 "quantization": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
                 "colorspace": (["RGB", "OHTA", "CMY", "XYZ", "YXY", "HCL", "LUV", "LAB", "HWB", "RGGBG", "YPbPr", "YCbCr", "YDbDr", "GS", "YUV"],),
                 "first_channel_only": ("BOOLEAN", {"default": False}),
