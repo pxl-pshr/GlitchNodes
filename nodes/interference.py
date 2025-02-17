@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import time
 
-class interferenceV2:
+class interference:
     @classmethod
     def INPUT_TYPES(s):
         return {

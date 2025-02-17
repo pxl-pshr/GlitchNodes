@@ -7,3 +7,4 @@ __pycache__
 *.pth
 types
 models
+.DS_Store
