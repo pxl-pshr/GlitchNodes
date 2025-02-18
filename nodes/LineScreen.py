@@ -6,7 +6,7 @@ import math
 import torch
 from tqdm import tqdm
 
-CATEGORY = "image/ProcessingFX"
+CATEGORY = "GLitchNodes"
 
 class LineScreen:
     def __init__(self):

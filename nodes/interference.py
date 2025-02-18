@@ -42,7 +42,7 @@ class interference:
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_sort_shader"
-    CATEGORY = "image/postprocessing"
+    CATEGORY = "GLitchNodes"
 
     def apply_sort_shader(self, image, horizontal_iterations, vertical_iterations, 
                          shift_amount, color_shift, color_mode, preserve_brightness):

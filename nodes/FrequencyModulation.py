@@ -29,7 +29,7 @@ class FrequencyModulation:
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_fm"
-    CATEGORY = "image/processing"
+    CATEGORY = "GLitchNodes"
 
     def apply_fm(self, image, carrier_frequency, bandwidth, quantization, colorspace, first_channel_only,
                  lowpass1_on, lowpass2_on, lowpass3_on, lowpass1_cutoff, lowpass2_cutoff, lowpass3_cutoff,

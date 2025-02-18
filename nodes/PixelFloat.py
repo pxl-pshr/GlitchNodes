@@ -77,7 +77,7 @@ class PixelFloat:
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_frames"
-    CATEGORY = "image/animation"
+    CATEGORY = "GLitchNodes"
 
     def ensure_rgb(self, image):
         if len(image.shape) == 3:

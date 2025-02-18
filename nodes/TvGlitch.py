@@ -54,7 +54,7 @@ class TvGlitch:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_tv_glitch"
-    CATEGORY = "image/postprocessing"
+    CATEGORY = "GLitchNodes"
 
     def apply_tv_glitch(self, image, subcarrier_amplitude, video_noise, video_chroma_noise, 
                        video_chroma_phase_noise, video_chroma_loss, composite_preemphasis, scanlines_scale):

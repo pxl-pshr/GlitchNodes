@@ -28,7 +28,7 @@ class GlitchIT:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_glitch"
-    CATEGORY = "image/processing"
+    CATEGORY = "GLitchNodes"
 
     def apply_glitch(self, images, seed, min_amount, max_amount):
         # Validate and fix the range

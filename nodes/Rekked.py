@@ -32,7 +32,7 @@ class Rekked:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_Rekked"
-    CATEGORY = "image/processing"
+    CATEGORY = "GLitchNodes"
 
     def apply_Rekked(self, image, mode):
         # Convert to numpy array

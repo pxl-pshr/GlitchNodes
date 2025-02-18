@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 class VideoModulation:
     def __init__(self):
-        self.CATEGORY = "image/postprocessing"
+        self.CATEGORY = "GLitchNodesg"
     
     @classmethod
     def INPUT_TYPES(cls):

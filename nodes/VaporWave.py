@@ -69,7 +69,7 @@ class VaporWave:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_vaporwave"
-    CATEGORY = "image/style"
+    CATEGORY = "GLitchNodes"
 
     def apply_vaporwave(self, image, threshold_dark, threshold_light, 
                        mid_threshold_1, mid_threshold_2, mid_threshold_3,

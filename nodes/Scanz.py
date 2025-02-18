@@ -113,7 +113,7 @@ class Scanz:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_image"
-    CATEGORY = "image/effects"
+    CATEGORY = "GLitchNodes"
 
     def normalize_image(self, image: np.ndarray) -> np.ndarray:
         if image.dtype != np.float32:

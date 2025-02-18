@@ -39,7 +39,7 @@ class VHSonAcid:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_glitch"
-    CATEGORY = "image/processing"
+    CATEGORY = "GLitchNodes"
 
     def create_slice_indices(self, height, slice_size):
         """Create random slice indices"""

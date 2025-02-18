@@ -76,7 +76,7 @@ class LuminousFlow:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "create_luminous_flow"
-    CATEGORY = "image/effects"
+    CATEGORY = "GLitchNodes"
 
     def enhance_colors(self, color, vibrancy, contrast):
         """Enhanced color processing with neon effect"""

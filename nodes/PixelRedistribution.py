@@ -44,7 +44,7 @@ class PixelRedistribution:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "redistribute_pixels"
-    CATEGORY = "image/processing"
+    CATEGORY = "GLitchNodes"
 
     def adjust_contrast_brightness(self, image, contrast, brightness):
         # Apply contrast
