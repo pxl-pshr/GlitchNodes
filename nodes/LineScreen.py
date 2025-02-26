@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
@@ -6,7 +7,7 @@ import math
 import torch
 from tqdm import tqdm
 
-CATEGORY = "GLitchNodes"
+CATEGORY = "GlitchNodes"
 
 class LineScreen:
     def __init__(self):

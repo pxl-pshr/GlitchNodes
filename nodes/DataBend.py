@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import numpy as np

@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 from tqdm import tqdm
@@ -44,7 +45,7 @@ class PixelRedistribution:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "redistribute_pixels"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def adjust_contrast_brightness(self, image, contrast, brightness):
         # Apply contrast

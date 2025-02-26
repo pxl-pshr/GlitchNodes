@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import numpy as np
@@ -30,7 +31,7 @@ class Corruptor:
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_glitch"
-    CATEGORY = "image/processing"
+    CATEGORY = "GlitchNodes"
 
     def apply_glitch(self, image, scaling_factor_in, scaling_factor_out, noise_strength, color_space, channels_combined):
         """

@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import numpy as np
@@ -77,7 +78,7 @@ class PixelFloat:
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_frames"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def ensure_rgb(self, image):
         if len(image.shape) == 3:

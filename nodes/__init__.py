@@ -50,6 +50,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VideoModulation": "VideoModulation | GlitchNodes",
 }
 
+def print_red(text):
+    # ANSI escape code for red text
+    RED = '\033[31m'
+    # ANSI escape code to reset color
+    RESET = '\033[0m'
+    print(f"{RED}{text}{RESET}")
 
 ascii_art = """
 
@@ -78,8 +84,4 @@ $R@i.~~ !     :   ~$$$$$B$$en:``
 ▒█░░░ ▄▀▒▀▄ ▒█▄▄█ ▒█░░░ ▒█▄▄▄█ ▒█░▒█ ▒█░▒█
 ~~~~~~~~~ G L I T C H N O D E S ~~~~~~~~~
 """
-print(ascii_art)
-
-import time
-
-time.sleep(1)
+print_red(ascii_art)

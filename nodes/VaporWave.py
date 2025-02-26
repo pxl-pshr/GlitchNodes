@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import numpy as np
 import torch
@@ -69,7 +70,7 @@ class VaporWave:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_vaporwave"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def apply_vaporwave(self, image, threshold_dark, threshold_light, 
                        mid_threshold_1, mid_threshold_2, mid_threshold_3,

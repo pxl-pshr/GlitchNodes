@@ -1,5 +1,6 @@
 # Original Styles from https://github.com/Datamosh-js/datamosh
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import numpy as np
 import torch
@@ -32,7 +33,7 @@ class Rekked:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_Rekked"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def apply_Rekked(self, image, mode):
         # Convert to numpy array

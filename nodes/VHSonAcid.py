@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import numpy as np
@@ -39,7 +40,7 @@ class VHSonAcid:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_glitch"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def create_slice_indices(self, height, slice_size):
         """Create random slice indices"""

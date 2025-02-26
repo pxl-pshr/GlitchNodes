@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import torch.nn as nn
@@ -8,7 +9,7 @@ from tqdm import tqdm
 
 class VideoModulation:
     def __init__(self):
-        self.CATEGORY = "GLitchNodesg"
+        self.CATEGORY = "GlitchNodes"
     
     @classmethod
     def INPUT_TYPES(cls):

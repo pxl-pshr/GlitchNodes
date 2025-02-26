@@ -1,4 +1,5 @@
 # https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
 
 import torch
 import torch.nn as nn
@@ -54,7 +55,7 @@ class TvGlitch:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_tv_glitch"
-    CATEGORY = "GLitchNodes"
+    CATEGORY = "GlitchNodes"
 
     def apply_tv_glitch(self, image, subcarrier_amplitude, video_noise, video_chroma_noise, 
                        video_chroma_phase_noise, video_chroma_loss, composite_preemphasis, scanlines_scale):
