@@ -33,7 +33,7 @@ These are highly experimental and may break or even error. You are more than wle
 
 # Corruptor Node
 
-Image processing node that applies controlled corruption effects using wavelet transformations.
+A node that applies controlled corruption effects to images using wavelet transformations.
 
 ## Examples
 
@@ -54,13 +54,26 @@ Image processing node that applies controlled corruption effects using wavelet t
 
 ## Parameters
 
+### Core Settings
 | Parameter | Description |
 |-----------|-------------|
-| scaling_factor_in | Controls initial corruption intensity (0-1000). Higher values create stronger distortion patterns. Default: 80.0 |
-| scaling_factor_out | Controls final corruption intensity (0-1000). Affects the image reconstruction phase. Default: 80.0 |
+| scaling_factor_in | Controls initial corruption intensity (0-1000). Higher values create more subtle effects, lower values create more extreme effects. Default: 80.0 |
+| scaling_factor_out | Controls final corruption intensity (0-1000). Higher values amplify the effect, lower values reduce it. Default: 80.0 |
 | noise_strength | Amount of random noise added (0-100). Higher values create more random distortions. Default: 10.0 |
 | color_space | Color space for applying effects: RGB, HSV, LAB, or YUV. Each creates different corruption patterns |
 | channels_combined | When True, processes all color channels together. When False, processes each channel independently |
+
+### Advanced Wavelet Controls
+| Parameter | Description |
+|-----------|-------------|
+| wavelet_floor_mode | Method used for coefficient quantization: "regular", "absolute", or "threshold". Default: "regular" |
+| wavelet_padding | Padding mode for signal extension: "edge", "constant", "reflect", or "symmetric". Default: "edge" |
+| wavelet_threshold | Threshold value used when wavelet_floor_mode is "threshold". Default: 0.5 |
+
+### Optional Controls
+| Parameter | Description |
+|-----------|-------------|
+| noise_distribution | Type of noise to add: "normal" (Gaussian), "uniform" (even), or "salt_pepper" (random extreme values). Default: "normal" |
 
 
 
