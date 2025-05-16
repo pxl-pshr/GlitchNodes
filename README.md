@@ -2,7 +2,7 @@
 
 GlitchNodes is a collection of image processing nodes designed for ComfyUI that specializes in creating glitch art and retro effects. 
 
-These are highly experimental and may break or even error. You are more than wlecome to contribute to the repo.
+These are highly experimental and may break or even error. You are more than welcome to contribute to the repo.
 
 
                           :::!~!!!!!:.
