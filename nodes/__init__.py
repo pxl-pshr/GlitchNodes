@@ -1,10 +1,12 @@
 from .Corruptor import Corruptor
 from .DataBend import DataBend
+from .DitherMe import DitherMe
 from .FrequencyModulation import FrequencyModulation
 from .GlitchIT import GlitchIT
 from .interference import interference
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
+from .OrderedDithering import OrderedDithering
 from .PixelFloat import PixelFloat
 from .PixelRedistribution import PixelRedistribution
 from .Rekked import Rekked
@@ -17,11 +19,13 @@ from .VideoModulation import VideoModulation
 NODE_CLASS_MAPPINGS = {
     "Corruptor": Corruptor,
     "DataBend": DataBend,
+    "DitherMe": DitherMe,
     "FrequencyModulation": FrequencyModulation,
     "GlitchIT": GlitchIT,
     "interference": interference,
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
+    "OrderedDithering": OrderedDithering,
     "PixelFloat": PixelFloat,
     "PixelRedistribution": PixelRedistribution,
     "Rekked": Rekked,
@@ -35,11 +39,13 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Corruptor": "Corruptor | GlitchNodes",
     "DataBend": "DataBend | GlitchNodes",
+    "DitherMe": "DitherMe | GlitchNodes",
     "FrequencyModulation": "Frequency Modulation WIP | GlitchNodes",
     "GlitchIT": "GlitchIT | GlitchNodes",
     "interference": "interference | GlitchNodes",
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
+    "OrderedDithering": "Ordered Dithering | GlitchNodes",
     "PixelFloat": "PixelFloat | GlitchNodes",
     "PixelRedistribution": "PixelRedistribution WIP | GlitchNodes",
     "Rekked": "Rekked WIP | GlitchNodes",
