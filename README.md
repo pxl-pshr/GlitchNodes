@@ -75,7 +75,7 @@ A node that applies controlled corruption effects to images using wavelet transf
 |-----------|-------------|
 | noise_distribution | Type of noise to add: "normal" (Gaussian), "uniform" (even), or "salt_pepper" (random extreme values). Default: "normal" |
 
-
+##
 
 # DataBend Node
 
@@ -136,7 +136,241 @@ Advanced glitch art node that combines multiple effects including slice manipula
 |-----------|-------------|
 | control_after_generate | Post-processing control: "randomize" or "none". Default: none |
 
+##
 
+# DitherMe Node
+
+A comprehensive dithering node that implements various dithering algorithms for creating retro and artistic effects.
+Supports both single images and batched images (N,H,W,C) with temporal coherence for animations.
+
+## Examples
+
+<table>
+<tr>
+<td>
+<img src="https://i.postimg.cc/pLgGxWG3/Comfy-UI-00008.png" width="400">
+</td>
+<td>
+<img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZWFobmVidWE5cWJieTM3MXh1NnhtZjh2YWtoNDNtcjFhNHN2cGlqayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/VxSuRNAporxNdRisUs/giphy.gif" width="400">
+</td>
+</tr>
+</table>
+
+## Input Type
+- Accepts single image: ✓
+- Accepts image batch: ✓
+
+## Parameters
+
+### Core Settings
+| Parameter | Description |
+|-----------|-------------|
+| algorithm | Dithering algorithm to use. See full list below. Default: floyd_steinberg |
+| color_mode | Output color scheme: "monochrome", "duotone", "tritone", or "indexed" |
+| effect_size | Scale factor for dithering patterns (0.1-10.0). Affects pattern density and size. Default: 1.0 |
+| threshold | Base threshold for dithering decisions (0-1). Default: 0.5 |
+
+### Image Processing
+| Parameter | Description |
+|-----------|-------------|
+| sharpen | Sharpening intensity (0-2.0). Applied before dithering. Default: 0.0 |
+| blur | Blur intensity (0-2.0). Applied before dithering. Default: 0.0 |
+| noise | Random noise amount (0-1.0). Adds texture before dithering. Default: 0.0 |
+| temporal_coherence | Frame blending for animations (0-1.0). Reduces flickering in sequences. Default: 0.0 |
+
+### Color Controls (Optional)
+| Parameter | Description |
+|-----------|-------------|
+| shadow_color | Color for dark areas (hex format). Default: #000000 |
+| midtone_color | Color for middle tones (hex format). Default: #808080 |
+| highlight_color | Color for bright areas (hex format). Default: #FFFFFF |
+| shadow_brightness | Brightness adjustment for shadows (-1 to 1). Default: 0.0 |
+| midtone_brightness | Brightness adjustment for midtones (-1 to 1). Default: 0.5 |
+| highlight_brightness | Brightness adjustment for highlights (-1 to 1). Default: 1.0 |
+| palette_colors | Number of colors for indexed mode (2-256). Default: 2 |
+
+## Available Algorithms
+
+<details>
+<summary><strong>Error Diffusion</strong></summary>
+
+- `floyd_steinberg` - Classic Floyd-Steinberg dithering
+- `jarvis_judice_ninke` - JJN algorithm with wider error distribution
+- `stucki` - Stucki algorithm for smooth gradients
+- `atkinson` - Atkinson dithering (used in early Mac computers)
+- `burkes` - Burkes filter for balanced error distribution
+- `sierra` - Sierra filter family (3 variants)
+- `sierra_2row` - Two-row Sierra variant
+- `sierra_lite` - Lightweight Sierra variant
+
+</details>
+
+<details>
+<summary><strong>Ordered Dithering</strong></summary>
+
+- `ordered_2x2`, `ordered_4x4`, `ordered_8x8` - Standard ordered matrices
+- `bayer_2x2`, `bayer_4x4`, `bayer_8x8` - Bayer pattern matrices
+
+</details>
+
+<details>
+<summary><strong>Clustered/Dispersed Patterns</strong></summary>
+
+- `clustered_dot_4x4`, `clustered_dot_8x8` - Clustered dot patterns
+- `dispersed_dot_4x4`, `dispersed_dot_8x8` - Dispersed dot patterns
+
+</details>
+
+<details>
+<summary><strong>Special Effects</strong></summary>
+
+- `halftone_dots` - Circular halftone patterns
+- `halftone_lines` - Linear halftone patterns
+- `modulation` - Smooth wave-based line modulation
+- `wave_interference` - Flowing interference patterns
+- `contour_lines` - Lines following image contours
+- `line_modulation` - Clean modulated line patterns
+
+</details>
+
+<details>
+<summary><strong>Noise & Spatial</strong></summary>
+
+- `blue_noise`, `white_noise` - Noise-based dithering
+- `random` - Random threshold dithering
+- `threshold` - Simple threshold conversion
+
+</details>
+
+<details>
+<summary><strong>Geometric Patterns</strong></summary>
+
+- `hilbert_curve` - Space-filling curve patterns
+- `spiral` - Spiral-based dithering
+- `zigzag` - Zigzag scan patterns
+- `checkerboard` - Checkerboard-based dithering
+
+</details>
+
+<details>
+<summary><strong>Diffusion Variants</strong></summary>
+
+- `diffusion_horizontal` - Horizontal-only error diffusion
+- `diffusion_vertical` - Vertical-only error diffusion
+- `diffusion_diagonal` - Diagonal error diffusion
+- `void_and_cluster` - Advanced void-and-cluster algorithm
+
+</details>
+
+##
+
+# OrderedDithering Node
+
+A specialized ordered dithering node that creates precise, controllable dithering patterns with animation support.
+Supports both single images and batched images (N,H,W,C) with temporal effects.
+
+## Examples
+
+<table>
+<tr>
+<td>
+<img src="https://i.postimg.cc/vZhPgJzZ/Comfy-UI-00007.png" width="400">
+</td>
+<td>
+<img src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaWxqMTJ1N2d6cDQ3ZWNpYm53ZmozNjJnZTd6Y2I1cmJibWc0dGh1OSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/2QFww1dnMkY4ji5B0l/giphy.gif" width="400">
+</td>
+</tr>
+</table>
+
+## Input Type
+- Accepts single image: ✓
+- Accepts image batch: ✓
+
+## Parameters
+
+### Core Settings
+| Parameter | Description |
+|-----------|-------------|
+| dither_type | Type of dithering: "Standard", "Artistic", or "Animated" |
+| color_mode | Output format: "Color" (RGB) or "Grayscale" |
+| num_colors | Number of quantization levels (2-256). Default: 2 |
+| pattern_size | Dither matrix size: "2x2", "4x4", or "8x8" |
+| scale | Pattern scaling factor (1-8). Enlarges the base pattern. Default: 1 |
+
+### Visual Controls
+| Parameter | Description |
+|-----------|-------------|
+| pattern_contrast | Pattern intensity (0.1-2.0). Higher values create stronger patterns. Default: 1.0 |
+| invert | Inverts colors and patterns when enabled. Default: False |
+
+### Animation Controls (Animated Mode)
+| Parameter | Description |
+|-----------|-------------|
+| frames | Number of animation frames to generate (1-300). Default: 60 |
+| speed | Base animation speed (0-1.0). Controls pattern shifting. Default: 0.0 |
+| wave_speed | Wave modulation speed (0.1-2.0). Controls pattern flow. Default: 1.0 |
+
+## Dithering Types
+
+<details>
+<summary><strong>Standard</strong></summary>
+
+Uses traditional Bayer matrices for precise, mathematical dithering patterns:
+- **2x2**: Basic checkerboard pattern, sharp transitions
+- **4x4**: Balanced detail and smoothness
+- **8x8**: Fine detail, smooth gradients
+
+Best for: Technical applications, retro computer graphics, precise color reduction
+
+</details>
+
+<details>
+<summary><strong>Artistic</strong></summary>
+
+Enhanced patterns with creative variations:
+- Dot patterns for texture
+- Line patterns (horizontal/vertical)
+- Diagonal patterns for dynamic effects
+- Density variations based on brightness levels
+
+Best for: Creative effects, stylized artwork, unique visual textures
+
+</details>
+
+<details>
+<summary><strong>Animated</strong></summary>
+
+Creates temporal dithering effects with moving patterns:
+- Pattern offset animation
+- Wave-based modulation
+- Smooth transitions between frames
+- Controllable speed and flow
+
+Best for: Video effects, dynamic backgrounds, animated textures
+
+</details>
+
+## Pattern Matrices
+
+The node uses optimized Bayer matrices:
+
+**2x2 Matrix:**
+```
+0  2
+3  1
+```
+
+**4x4 Matrix:**
+```
+0   8   2  10
+12  4  14   6
+3  11   1   9
+15  7  13   5
+```
+
+**8x8 Matrix:** Full 64-element optimized Bayer pattern for maximum detail.
+
+##
 
 # GlitchIT Node
 
@@ -167,7 +401,7 @@ A node that creates JPEG corruption artifacts by manipulating image data at the 
 | min_amount | Minimum number of bytes to corrupt (0-100). Default: 1 |
 | max_amount | Maximum number of bytes to corrupt (1-100). Default: 10 |
 
-
+##
 
 # Interference Node
 
@@ -206,6 +440,8 @@ Advanced shader-like interference effect node that creates complex patterns thro
 | color_mode | Color effect type: "monochrome", "rainbow", "duotone", or "invert". Each mode creates distinct color patterns |
 | preserve_brightness | When enabled, maintains original image brightness levels while applying color effects. Default: True |
 
+##
+
 # LineScreen Node
 
 An image processing node that creates halftone-like effects using configurable line patterns.
@@ -222,7 +458,6 @@ An image processing node that creates halftone-like effects using configurable l
 </td>
 </tr>
 </table>
-
 
 ## Input Type
 - Accepts single image: ✓
@@ -252,6 +487,8 @@ An image processing node that creates halftone-like effects using configurable l
 | bg_color_r | Red component of background color (0-1). Default: 1.0 |
 | bg_color_g | Green component of background color (0-1). Default: 1.0 |
 | bg_color_b | Blue component of background color (0-1). Default: 1.0 |
+
+##
 
 # LuminousFlow Node
 
@@ -297,6 +534,8 @@ A node that transforms images into flowing luminous strands, creating an etherea
 | vibrancy | Color saturation intensity (0.1-15.0). Higher values create more vivid colors. Default: 8.0 |
 | contrast | Overall contrast enhancement (0.1-10.0). Higher values create stronger distinction between light and dark areas. Default: 4.0 |
 
+##
+
 # PixelFloat Node
 
 An advanced animation processor that creates fluid, gravity-affected motion between frames using optical flow analysis.
@@ -338,6 +577,8 @@ An advanced animation processor that creates fluid, gravity-affected motion betw
 | flow_levels | Number of pyramid levels for flow analysis (1-8). Default: 5 |
 | flow_iterations | Number of iterations per pyramid level (1-10). Default: 3 |
 
+##
+
 # PixelRedistribution Node
 
 A node that creates unique visual effects by redistributing pixels based on various patterns and color relationships.
@@ -377,6 +618,8 @@ A node that creates unique visual effects by redistributing pixels based on vari
 | contrast | Adjusts image contrast before processing (0.1-4.0). Default: 1.0 |
 | brightness | Adjusts image brightness before processing (-1.0 to 1.0). Default: 0.0 |
 
+##
+
 # Rekked Node
 
 A versatile image processing node that applies various glitch and artistic effects through different processing modes. 
@@ -415,6 +658,8 @@ Original Repo: https://github.com/Datamosh-js/datamosh
 - **veneneux**: Creates poisonous-looking color shifts with seed variation
 - **void**: Combines noise and grain for dark, textured effects
 - **walter**: Applies threshold-based color transformations with balance correction
+
+##
 
 # Scanz Node
 
@@ -467,6 +712,8 @@ A comprehensive glitch effect node that combines scan lines, wave distortions, a
 | static_noise | Amount of static noise overlay (0-1). Darker areas receive more noise. Default: 0.0 |
 | edge_stretch | Edge-based pixel stretching intensity (0-1). Default: 0.0 |
 
+##
+
 # TvGlitch Node (WIP Extremely Long Processing)
 
 Simulates authentic analog TV signal distortions and artifacts by emulating the YIQ color space and composite video signal characteristics.
@@ -505,6 +752,8 @@ Simulates authentic analog TV signal distortions and artifacts by emulating the 
 |-----------|-------------|
 | video_chroma_loss | Probability of color signal dropout per scanline (0-1). Creates color loss effects. Default: 0.24 |
 | scanlines_scale | Intensity of CRT scanline effect (0-5). Higher values create more pronounced scanlines. Default: 1.5 |
+
+##
 
 # VaporWave Node
 
@@ -568,6 +817,8 @@ A stylistic effect node that transforms images into vaporwave aesthetics using c
 | color4_g | Green component (0-1). Default: 1.0 |
 | color4_b | Blue component (0-1). Default: 0.976 |
 
+##
+
 # VHSonAcid Node
 
 A psychedelic image processing node that combines VHS-style artifacts with acid-like color distortions.
@@ -603,6 +854,7 @@ A psychedelic image processing node that combines VHS-style artifacts with acid-
 |-----------|-------------|
 | color_shift | Intensity of RGB channel separation (0-1). Higher values create more extreme color bleeding. Default: 0.5 |
 
+##
 
 # VideoModulation Node
 
