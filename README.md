@@ -277,7 +277,7 @@ Supports both single images and batched images (N,H,W,C) with temporal effects.
 <img src="https://i.postimg.cc/vZhPgJzZ/Comfy-UI-00007.png" width="400">
 </td>
 <td>
-<img src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaWxqMTJ1N2d6cDQ3ZWNpYm53ZmozNjJnZTd6Y2I1cmJibWc0dGh1OSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/2QFww1dnMkY4ji5B0l/giphy.gif" width="400">
+<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTVlbTRjdWwyaHFqZmtqdnF6bnJ2NjdmZzQ1dHV5ZnlhdXVrdmVxaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/2QFww1dnMkY4ji5B0l/giphy.gif" width="400">
 </td>
 </tr>
 </table>
