@@ -1,0 +1,500 @@
+{
+  "id": "d3a868d1-366e-4f98-9dd1-786ac42b0059",
+  "revision": 0,
+  "last_node_id": 24,
+  "last_link_id": 47,
+  "nodes": [
+    {
+      "id": 22,
+      "type": "VideoModulation",
+      "pos": [
+        2023.8055419921875,
+        777.5748901367188
+      ],
+      "size": [
+        291.6138610839844,
+        130
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 40
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            41
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "glitchnodes",
+        "ver": "1.0.1",
+        "Node name for S&R": "VideoModulation"
+      },
+      "widgets_values": [
+        7,
+        0.015,
+        1.2,
+        0.15
+      ]
+    },
+    {
+      "id": 19,
+      "type": "DataBend",
+      "pos": [
+        2399.64404296875,
+        452.0823059082031
+      ],
+      "size": [
+        284.75,
+        442
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            44
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "glitchnodes",
+        "ver": "1.0.1",
+        "Node name for S&R": "DataBend"
+      },
+      "widgets_values": [
+        "horizontal",
+        5,
+        40,
+        0.5,
+        "random",
+        0.7,
+        false,
+        0.5,
+        "all",
+        3,
+        0.5,
+        13072,
+        "fixed",
+        1,
+        0,
+        0,
+        "none"
+      ]
+    },
+    {
+      "id": 24,
+      "type": "Scanz",
+      "pos": [
+        2423.687255859375,
+        1084.7994384765625
+      ],
+      "size": [
+        270,
+        322
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 44
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "glitchnodes",
+        "ver": "1.0.1",
+        "Node name for S&R": "Scanz"
+      },
+      "widgets_values": [
+        0.5,
+        0.2,
+        0.3,
+        0,
+        0.5,
+        1,
+        0,
+        0,
+        0.2,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "OrderedDithering",
+      "pos": [
+        2740.3310546875,
+        556.7423095703125
+      ],
+      "size": [
+        298.8462829589844,
+        274
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "glitchnodes",
+        "ver": "1.0.1",
+        "Node name for S&R": "OrderedDithering"
+      },
+      "widgets_values": [
+        "Standard",
+        "Color",
+        4,
+        "4x4",
+        1,
+        1,
+        60,
+        0,
+        1,
+        false
+      ]
+    },
+    {
+      "id": 18,
+      "type": "OrderedDithering",
+      "pos": [
+        2030.682861328125,
+        450.74066162109375
+      ],
+      "size": [
+        298.8462829589844,
+        274
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "glitchnodes",
+        "ver": "1.0.1",
+        "Node name for S&R": "OrderedDithering"
+      },
+      "widgets_values": [
+        "Artistic",
+        "Grayscale",
+        3,
+        "4x4",
+        1,
+        1,
+        60,
+        0,
+        1,
+        false
+      ]
+    },
+    {
+      "id": 1,
+      "type": "VHS_LoadVideoPath",
+      "pos": [
+        1358.7159423828125,
+        461.48876953125
+      ],
+      "size": [
+        539.3036499023438,
+        832.619140625
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.5.8",
+        "Node name for S&R": "VHS_LoadVideoPath",
+        "ttNbgOverride": {
+          "color": "#222",
+          "bgcolor": "#000",
+          "groupcolor": "#444"
+        },
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": {
+        "video": "/Users/jeru/Downloads/pxlpshr_A_grainy_black-and-white_night_vision_trail_camera_ph_7322338d-4b62-4bf9-98a2-d95db6832a16_0.mp4",
+        "force_rate": 0,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "AnimateDiff",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "force_rate": 0,
+            "filename": "/Users/jeru/Downloads/pxlpshr_A_grainy_black-and-white_night_vision_trail_camera_ph_7322338d-4b62-4bf9-98a2-d95db6832a16_0.mp4",
+            "type": "path",
+            "format": "video/mp4",
+            "select_every_nth": 1
+          }
+        }
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "shape": 1
+    },
+    {
+      "id": 4,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        3122.492431640625,
+        414.70367431640625
+      ],
+      "size": [
+        707.8427734375,
+        1053.479736328125
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 47
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.5.8",
+        "Node name for S&R": "VHS_VideoCombine",
+        "ttNbgOverride": {
+          "color": "#222",
+          "bgcolor": "#000",
+          "groupcolor": "#444"
+        },
+        "widget_ue_connectable": {
+          "filename_prefix": true
+        }
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 5,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "AnimateDiff_00060.mp4",
+            "subfolder": "",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "AnimateDiff_00060.png",
+            "fullpath": "/Users/jeru/Documents/ComfyUI/output/AnimateDiff_00060.mp4"
+          },
+          "muted": false
+        }
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "shape": 1
+    }
+  ],
+  "links": [
+    [
+      27,
+      1,
+      0,
+      18,
+      0,
+      "IMAGE"
+    ],
+    [
+      40,
+      18,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      41,
+      22,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      44,
+      19,
+      0,
+      24,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      24,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      23,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.666837982274431,
+      "offset": [
+        -1158.51206394125,
+        -212.70637127131639
+      ]
+    },
+    "frontendVersion": "1.20.6",
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true,
+    "links_added_by_ue": []
+  },
+  "version": 0.4
+}
