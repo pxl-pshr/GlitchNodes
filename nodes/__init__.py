@@ -39,7 +39,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ascii": "ascii | GlitchNodes",
+    "ascii": "ASCIIA | GlitchNodes",
     "Corruptor": "Corruptor | GlitchNodes",
     "DataBend": "DataBend | GlitchNodes",
     "DitherMe": "DitherMe | GlitchNodes",

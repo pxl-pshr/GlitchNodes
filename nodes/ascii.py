@@ -1,14 +1,10 @@
-# https://x.com/_pxlpshr
-# https://instagram.com/pxl.pshr/
-# Original repo: https://github.com/collidingScopes/ascii
-
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import random
 import torch
 from tqdm import tqdm
 
-class ascii:
+class ASCII:
     CATEGORY = 'GlitchNodes'
     FUNCTION = 'execute'
     OUTPUT_NODE = False
@@ -75,10 +71,7 @@ class ascii:
             return image
         # Convert tensors or arrays to numpy
         try:
-            if hasattr(image, 'cpu'):
-                arr = image.cpu().numpy()
-            else:
-                arr = np.array(image)
+            arr = image.cpu().numpy() if hasattr(image, 'cpu') else np.array(image)
         except:
             arr = np.array(image)
         pil_list = []
