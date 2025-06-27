@@ -1,3 +1,7 @@
+# https://x.com/_pxlpshr
+# https://instagram.com/pxl.pshr/
+# Original Repo: https://github.com/collidingScopes/ascii
+
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import random
