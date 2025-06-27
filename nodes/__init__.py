@@ -1,3 +1,4 @@
+from .ascii import ascii
 from .Corruptor import Corruptor
 from .DataBend import DataBend
 from .DitherMe import DitherMe
@@ -17,6 +18,7 @@ from .VHSonAcid import VHSonAcid
 from .VideoModulation import VideoModulation
 
 NODE_CLASS_MAPPINGS = {
+    "ascii": ascii,
     "Corruptor": Corruptor,
     "DataBend": DataBend,
     "DitherMe": DitherMe,
@@ -37,6 +39,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "ascii": "ascii | GlitchNodes",
     "Corruptor": "Corruptor | GlitchNodes",
     "DataBend": "DataBend | GlitchNodes",
     "DitherMe": "DitherMe | GlitchNodes",
