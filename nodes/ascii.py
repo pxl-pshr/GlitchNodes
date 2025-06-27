@@ -39,10 +39,10 @@ class ASCII:
         fontColor, fontColor2, fontSizeFactor, resolution,
         threshold, invert, randomness, textType, textInput
     ):
-        # Convert input to PIL images
+        # 1) Convert input to PIL
         pil_images = self._tensor_to_pil(IMAGE)
 
-        # Generate ASCII images
+        # 2) Make ASCII
         ascii_images = []
         for img in tqdm(pil_images, desc='Generating ASCII'):
             ascii_images.append(
@@ -53,7 +53,7 @@ class ASCII:
                 )
             )
 
-        # Convert back to torch tensors
+        # 3) Back to tensors
         ascii_tensors = []
         for img in tqdm(ascii_images, desc='Converting to tensors'):
             arr = np.array(img).astype(np.float32) / 255.0
@@ -72,13 +72,13 @@ class ASCII:
             arr = image.cpu().numpy() if hasattr(image, 'cpu') else np.array(image)
         except:
             arr = np.array(image)
-        pil_list = []
+        out = []
         if arr.ndim == 4:
             for t in arr:
-                pil_list.append(self._array_to_pil(t))
+                out.append(self._array_to_pil(t))
         else:
-            pil_list.append(self._array_to_pil(arr))
-        return pil_list
+            out.append(self._array_to_pil(arr))
+        return out
 
     def _array_to_pil(self, arr):
         if arr.ndim == 3 and arr.shape[0] in (1, 3):
@@ -88,7 +88,7 @@ class ASCII:
         else:
             arr = arr.astype(np.uint8)
         if arr.ndim == 2:
-            arr = np.stack([arr] * 3, axis=-1)
+            arr = np.stack([arr]*3, axis=-1)
         return Image.fromarray(arr)
 
     def _make_ascii(
@@ -96,75 +96,58 @@ class ASCII:
         res, thr, inv, rnd, ttype, tinput
     ):
         w, h = pil_img.size
-        result = Image.new('RGB', (w, h), background)
-        draw = ImageDraw.Draw(result)
+        canvas = Image.new('RGB', (w, h), background)
+        draw = ImageDraw.Draw(canvas)
 
-        # Try common monospace fonts
-        size = int(fsf * 10)
-        font = None
-        for fp in (
-            '/Library/Fonts/Courier New.ttf',
-            '/Library/Fonts/Menlo.ttc',
-            '/Library/Fonts/Monaco.ttf',
-            'C:/Windows/Fonts/Cour.ttf',
-            '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
-        ):
-            try:
-                font = ImageFont.truetype(fp, size=size)
-                break
-            except:
-                pass
-        if font is None:
-            font = ImageFont.load_default()
+        # -- use Pillow's built-in bitmap font --
+        font = ImageFont.load_default()
 
-        # Compute grid cell size
-        cell_w = w / res
+        # measure one character to set grid
         mask = font.getmask('A')
         glyph_w, glyph_h = mask.size
+        cell_w = w / res
         cell_h = cell_w * (glyph_h / glyph_w)
         rows = max(1, int(h / cell_h))
 
-        # Downsample + get luminance
+        # get luminance map
         small = pil_img.resize((res, rows))
         L = np.array(small.convert('L'), dtype=np.uint8)
 
-        # Build reversed charset (space→'.'→…→'@')
+        # reversed charset: space first → '@' last
         if ttype == 'Input Text' and tinput:
             chars = list(tinput)
         else:
-            chars = list(' .:-=+*#%@')  # space first, '@' last
+            chars = list(' .:-=+*#%@')
 
-        # Pre-parse colors
-        fc1_rgb = tuple(int(fc1.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-        fc2_rgb = tuple(int(fc2.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        # parse colors
+        c1 = tuple(int(fc1.lstrip('#')[i:i+2], 16) for i in (0,2,4))
+        c2 = tuple(int(fc2.lstrip('#')[i:i+2], 16) for i in (0,2,4))
 
-        # Draw loop
         for i in range(rows):
             for j in range(res):
                 lum = int(L[i, j])
-
-                # 1) always invert first
                 if inv:
                     lum = 255 - lum
-                # 2) skip pure black to leave background intact
                 if lum == 0:
                     continue
-                # 3) threshold test
                 if thr > 0 and lum < thr:
                     continue
 
-                # 4) choose glyph (with randomness)
+                # pick glyph
                 if rnd > 0 and random.random() < rnd/100:
                     ch = random.choice(chars)
                 else:
-                    idx = int(lum / 255 * (len(chars) - 1))
+                    idx = int(lum/255*(len(chars)-1))
                     ch = chars[idx]
 
-                # 5) smooth color blend
+                # blend color
                 t = lum / 255.0
-                r = int(fc1_rgb[0] * (1-t) + fc2_rgb[0] * t)
-                g = int(fc1_rgb[1] * (1-t) + fc2_rgb[1] * t)
-                b = int(fc1_rgb[2] * (1-t) + fc2_rgb[2] * t)
-                draw.text((j * cell_w, i * cell_h), ch, fill=(r, g, b), font=font)
+                color = (
+                    int(c1[0]*(1-t) + c2[0]*t),
+                    int(c1[1]*(1-t) + c2[1]*t),
+                    int(c1[2]*(1-t) + c2[2]*t),
+                )
 
-        return result
+                draw.text((j*cell_w, i*cell_h), ch, fill=color, font=font)
+
+        return canvas
