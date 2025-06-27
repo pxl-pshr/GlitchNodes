@@ -42,7 +42,7 @@ class ASCII:
         # Convert input to PIL images
         pil_images = self._tensor_to_pil(IMAGE)
 
-        # Generate ASCII versions with progress bar
+        # Generate ASCII images
         ascii_images = []
         for img in tqdm(pil_images, desc='Generating ASCII'):
             ascii_images.append(
@@ -53,33 +53,26 @@ class ASCII:
                 )
             )
 
-        # Convert each PIL ASCII image to a torch tensor (H,W,C) float32 in [0,1]
+        # Convert back to torch tensors
         ascii_tensors = []
         for img in tqdm(ascii_images, desc='Converting to tensors'):
             arr = np.array(img).astype(np.float32) / 255.0
-            # ensure HWC
             if arr.ndim == 2:
                 arr = np.stack([arr]*3, axis=-1)
-            tensor = torch.from_numpy(arr)
-            ascii_tensors.append(tensor)
+            ascii_tensors.append(torch.from_numpy(arr))
 
-        # Return list of tensors for ComfyUI save_images
         return (ascii_tensors,)
 
     def _tensor_to_pil(self, image):
-        # Handle dict input
         if isinstance(image, dict):
             image = image.get('samples', image)
-        # Already PIL images
         if isinstance(image, list) and all(isinstance(i, Image.Image) for i in image):
             return image
-        # Convert tensors or arrays to numpy
         try:
             arr = image.cpu().numpy() if hasattr(image, 'cpu') else np.array(image)
         except:
             arr = np.array(image)
         pil_list = []
-        # Batch: B,C,H,W or B,H,W,C
         if arr.ndim == 4:
             for t in arr:
                 pil_list.append(self._array_to_pil(t))
@@ -88,15 +81,12 @@ class ASCII:
         return pil_list
 
     def _array_to_pil(self, arr):
-        # Move channel-first to HWC
         if arr.ndim == 3 and arr.shape[0] in (1, 3):
             arr = np.transpose(arr, (1, 2, 0))
-        # Scale floats
         if issubclass(arr.dtype.type, np.floating):
             arr = np.clip(arr * 255, 0, 255).astype(np.uint8)
         else:
             arr = arr.astype(np.uint8)
-        # Grayscale to RGB
         if arr.ndim == 2:
             arr = np.stack([arr] * 3, axis=-1)
         return Image.fromarray(arr)
@@ -106,48 +96,75 @@ class ASCII:
         res, thr, inv, rnd, ttype, tinput
     ):
         w, h = pil_img.size
-        # Create background
         result = Image.new('RGB', (w, h), background)
         draw = ImageDraw.Draw(result)
-        # Load font
-        try:
-            font = ImageFont.truetype('DejaVuSansMono.ttf', int(fsf * 10))
-        except:
+
+        # Try common monospace fonts
+        size = int(fsf * 10)
+        font = None
+        for fp in (
+            '/Library/Fonts/Courier New.ttf',
+            '/Library/Fonts/Menlo.ttc',
+            '/Library/Fonts/Monaco.ttf',
+            'C:/Windows/Fonts/Cour.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+        ):
+            try:
+                font = ImageFont.truetype(fp, size=size)
+                break
+            except:
+                pass
+        if font is None:
             font = ImageFont.load_default()
-        # Compute grid size
+
+        # Compute grid cell size
         cell_w = w / res
-        try:
-            mask = font.getmask('A')
-            glyph_w, glyph_h = mask.size
-        except AttributeError:
-            bbox = font.getbbox('A')
-            glyph_w = bbox[2] - bbox[0]
-            glyph_h = bbox[3] - bbox[1]
+        mask = font.getmask('A')
+        glyph_w, glyph_h = mask.size
         cell_h = cell_w * (glyph_h / glyph_w)
         rows = max(1, int(h / cell_h))
-        # Downsample and get luminance
+
+        # Downsample + get luminance
         small = pil_img.resize((res, rows))
-        L = np.array(small.convert('L'))
-        # Choose character set
+        L = np.array(small.convert('L'), dtype=np.uint8)
+
+        # Build reversed charset (space→'.'→…→'@')
         if ttype == 'Input Text' and tinput:
             chars = list(tinput)
         else:
-            chars = list('@%#*+=-:. ')
-        # Draw ASCII
+            chars = list(' .:-=+*#%@')  # space first, '@' last
+
+        # Pre-parse colors
+        fc1_rgb = tuple(int(fc1.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        fc2_rgb = tuple(int(fc2.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+
+        # Draw loop
         for i in range(rows):
             for j in range(res):
                 lum = int(L[i, j])
-                if thr > 0:
-                    cond = lum > thr
-                    if inv:
-                        cond = not cond
-                    if not cond:
-                        continue
-                if rnd > 0 and random.random() < rnd / 100:
+
+                # 1) always invert first
+                if inv:
+                    lum = 255 - lum
+                # 2) skip pure black to leave background intact
+                if lum == 0:
+                    continue
+                # 3) threshold test
+                if thr > 0 and lum < thr:
+                    continue
+
+                # 4) choose glyph (with randomness)
+                if rnd > 0 and random.random() < rnd/100:
                     ch = random.choice(chars)
                 else:
                     idx = int(lum / 255 * (len(chars) - 1))
                     ch = chars[idx]
-                color = fc1 if ((i + j) % 2 == 0) else fc2
-                draw.text((j * cell_w, i * cell_h), ch, fill=color, font=font)
+
+                # 5) smooth color blend
+                t = lum / 255.0
+                r = int(fc1_rgb[0] * (1-t) + fc2_rgb[0] * t)
+                g = int(fc1_rgb[1] * (1-t) + fc2_rgb[1] * t)
+                b = int(fc1_rgb[2] * (1-t) + fc2_rgb[2] * t)
+                draw.text((j * cell_w, i * cell_h), ch, fill=(r, g, b), font=font)
+
         return result
