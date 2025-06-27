@@ -8,7 +8,7 @@ import random
 import torch
 from tqdm import tqdm
 
-class ASCII:
+class ascii:
     CATEGORY = 'GlitchNodes'
     FUNCTION = 'execute'
     OUTPUT_NODE = False
