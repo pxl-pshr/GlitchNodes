@@ -59,12 +59,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VideoModulation": "VideoModulation | GlitchNodes",
 }
 
+
 def print_red(text):
     # ANSI escape code for red text
-    RED = '\033[31m'
+    RED = "\033[31m"
     # ANSI escape code to reset color
-    RESET = '\033[0m'
+    RESET = "\033[0m"
     print(f"{RED}{text}{RESET}")
+
 
 ascii_art = """
 
@@ -87,9 +89,9 @@ W$@@M!!! .!~~ !!     .:XUW$W!~ `"~:    :
 .~~   :X@!.-~   ?@WTWo("*$$$W$TH$! `
 Wi.~!X$?!-~    : ?$$$B$Wu("**$RM!
 $R@i.~~ !     :   ~$$$$$B$$en:``
-?MXT@Wx.~    :     ~"##*$$$$M~                                                                   
-▒█▀▀█ ▀▄▒▄▀ ▒█░░░ ▒█▀▀█ ▒█▀▀▀█ ▒█░▒█ ▒█▀▀█ 
-▒█▄▄█ ░▒█░░ ▒█░░░ ▒█▄▄█ ░▀▀▀▄▄ ▒█▀▀█ ▒█▄▄▀ 
+?MXT@Wx.~    :     ~"##*$$$$M~
+▒█▀▀█ ▀▄▒▄▀ ▒█░░░ ▒█▀▀█ ▒█▀▀▀█ ▒█░▒█ ▒█▀▀█
+▒█▄▄█ ░▒█░░ ▒█░░░ ▒█▄▄█ ░▀▀▀▄▄ ▒█▀▀█ ▒█▄▄▀
 ▒█░░░ ▄▀▒▀▄ ▒█▄▄█ ▒█░░░ ▒█▄▄▄█ ▒█░▒█ ▒█░▒█
 ~~~~~~~~~ G L I T C H N O D E S ~~~~~~~~~
 """
