@@ -1,6 +1,6 @@
 # ComfyUI GlitchNodes
 
-GlitchNodes is a collection of image processing nodes designed for ComfyUI that specializes in creating glitch art and retro effects. 
+GlitchNodes is a collection of image processing nodes designed for ComfyUI that specializes in creating glitch art and retro effects.
 
 These are highly experimental and may break or even error. You are more than welcome to contribute to the repo.
 
@@ -24,7 +24,7 @@ These are highly experimental and may break or even error. You are more than wel
     .~~   :X@!.-~   ?@WTWo("*$$$W$TH$! `
     Wi.~!X$?!-~    : ?$$$B$Wu("**$RM!
     $R@i.~~ !     :   ~$$$$$B$$en:``
-    ?MXT@Wx.~    :     ~"##*$$$$M~   
+    ?MXT@Wx.~    :     ~"##*$$$$M~
     ▒█▀▀█ ▀▄▒▄▀ ▒█░░░ ▒█▀▀█ ▒█▀▀▀█ ▒█░▒█ ▒█▀▀█
     ▒█▄▄█ ░▒█░░ ▒█░░░ ▒█▄▄█ ░▀▀▀▄▄ ▒█▀▀█ ▒█▄▄▀
     ▒█░░░ ▄▀▒▀▄ ▒█▄▄█ ▒█░░░ ▒█▄▄▄█ ▒█░▒█ ▒█░▒█
@@ -622,7 +622,7 @@ A node that creates unique visual effects by redistributing pixels based on vari
 
 # Rekked Node
 
-A versatile image processing node that applies various glitch and artistic effects through different processing modes. 
+A versatile image processing node that applies various glitch and artistic effects through different processing modes.
 Original Repo: https://github.com/Datamosh-js/datamosh
 
 ## Example
