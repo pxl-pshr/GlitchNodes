@@ -8,6 +8,7 @@ from .interference import interference
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
 from .OrderedDithering import OrderedDithering
+from .Pixel8Bit import Pixel8Bit
 from .PixelFloat import PixelFloat
 from .PixelRedistribution import PixelRedistribution
 from .Rekked import Rekked
@@ -28,6 +29,7 @@ NODE_CLASS_MAPPINGS = {
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
     "OrderedDithering": OrderedDithering,
+    "Pixel8Bit": Pixel8Bit,
     "PixelFloat": PixelFloat,
     "PixelRedistribution": PixelRedistribution,
     "Rekked": Rekked,
@@ -49,6 +51,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
     "OrderedDithering": "Ordered Dithering | GlitchNodes",
+    "Pixel8Bit": "8-Bit / Pixelate | GlitchNodes",
     "PixelFloat": "PixelFloat | GlitchNodes",
     "PixelRedistribution": "PixelRedistribution WIP | GlitchNodes",
     "Rekked": "Rekked WIP | GlitchNodes",

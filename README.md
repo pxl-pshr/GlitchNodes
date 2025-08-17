@@ -30,6 +30,117 @@ These are highly experimental and may break or even error. You are more than wel
     ▒█░░░ ▄▀▒▀▄ ▒█▄▄█ ▒█░░░ ▒█▄▄▄█ ▒█░▒█ ▒█░▒█
     ~~~~~~~~~ G L I T C H N O D E S ~~~~~~~~~
 
+# Pixel8Bit Node
+
+A comprehensive retro pixelation node that converts images to authentic 8-bit style with period-accurate palettes and dithering.
+Supports both single images and batched images (N,H,W,C) with progress tracking.
+
+## Examples
+
+<table>
+<tr>
+<td>
+<img src="https://i.postimg.cc/cJmyNT4s/Comfy-UI-34194.png" width="400">
+</td>
+<td>
+<img src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYzkxM3B5NW9zN281MjBsM3VyZnduejhmazcwamt3NTU5ZjdmZXEyZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7qiofj8YgUkx4toHdb/giphy.gif" width="400">
+</td>
+</tr>
+</table>
+
+## Input Type
+- Accepts single image: ✓
+- Accepts image batch: ✓
+
+## Parameters
+
+### Core Settings
+| Parameter | Description |
+|-----------|-------------|
+| pixel_size | Pixelation factor (1-256). Higher values create larger pixels. Default: 4 |
+| quant_mode | Color quantization method: "Fixed Palette" or "Adaptive K-Means" |
+| gamma | Gamma correction (0.1-3.0). Adjusts brightness curve before processing. Default: 1.0 |
+
+### Palette Controls
+| Parameter | Description |
+|-----------|-------------|
+| fixed_palette | Historical palette to use (see available palettes below) |
+| custom_palette_hex | Custom colors in hex format (comma-separated). Used when palette is "Custom" |
+| k_colors | Number of colors for K-Means mode (2-256). Default: 8 |
+
+### Dithering
+| Parameter | Description |
+|-----------|-------------|
+| dithering | Dithering algorithm: "None", "Ordered", or "Floyd-Steinberg" |
+| ordered_size | Matrix size for ordered dithering: 2, 4, or 8. Default: 4 |
+| posterize_bits | Bit depth reduction (1-8). Reduces color precision before quantization. Default: 8 |
+
+## Available Palettes
+
+<details>
+<summary><strong>Classic Console Palettes</strong></summary>
+
+- **PICO-8**: Fantasy console 16-color palette
+- **GameBoy**: Original DMG-01 4-shade green palette
+- **NES**: Nintendo Entertainment System color subset
+- **C64**: Commodore 64 VIC-II 16 colors
+- **Atari2600-Subset**: Common 16-color subset from Atari 2600
+- **MSX**: TMS9918 palette from MSX computers
+
+</details>
+
+<details>
+<summary><strong>Computer Palettes</strong></summary>
+
+- **ZX Spectrum**: Sinclair ZX Spectrum 15 colors (7 base + bright variants)
+- **Apple II**: Composite artifact colors
+- **EGA-16**: IBM Enhanced Graphics Adapter 16 colors
+- **VGA-256**: Standard 256-color VGA palette (6×6×6 RGB cube + grayscale)
+- **Amiga-Workbench**: Popular Workbench/demoscene colors
+- **CGA-Default**: IBM Color Graphics Adapter (cyan/magenta/white)
+- **CGA-Alternate**: CGA alternate palette (green/red/yellow)
+
+</details>
+
+<details>
+<summary><strong>Custom Options</strong></summary>
+
+- **Custom**: Define your own palette using hex colors
+  - Format: `#FF0000,#00FF00,#0000FF` (comma-separated)
+  - Supports 3-digit and 6-digit hex codes
+
+</details>
+
+## Quantization Modes
+
+### Adaptive K-Means
+Analyzes the image to create an optimal palette:
+- **Content-Aware**: Colors chosen based on image content
+- **Customizable**: Control exact number of colors (2-256)
+- **Flexible**: Works with any image while maintaining retro feel
+
+## Dithering Options
+
+### None
+Direct color quantization without dithering:
+- **Clean**: Sharp color transitions
+- **Minimal**: No additional patterns
+- **Fast**: Quickest processing
+
+### Ordered (Bayer Matrix)
+Uses mathematical dither patterns:
+- **2×2**: Basic checkerboard patterns
+- **4×4**: Balanced detail and smoothness  
+- **8×8**: Fine detail with smooth gradients
+- **Consistent**: Repeatable patterns
+
+### Floyd-Steinberg
+Error diffusion dithering:
+- **Organic**: Natural-looking transitions
+- **Smooth**: Best gradient representation
+- **Authentic**: Classic algorithm from early computing
+
+##
 
 # Corruptor Node
 
