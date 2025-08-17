@@ -3,8 +3,8 @@
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 from tqdm import tqdm
+
 
 class FrequencyModulation:
     @classmethod
@@ -15,7 +15,25 @@ class FrequencyModulation:
                 "carrier_frequency": ("FLOAT", {"default": 10, "min": 0.01, "max": 10.0, "step": 0.01}),
                 "bandwidth": ("FLOAT", {"default": 10, "min": 0.1, "max": 10.0, "step": 0.1}),
                 "quantization": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
-                "colorspace": (["RGB", "OHTA", "CMY", "XYZ", "YXY", "HCL", "LUV", "LAB", "HWB", "RGGBG", "YPbPr", "YCbCr", "YDbDr", "GS", "YUV"],),
+                "colorspace": (
+                    [
+                        "RGB",
+                        "OHTA",
+                        "CMY",
+                        "XYZ",
+                        "YXY",
+                        "HCL",
+                        "LUV",
+                        "LAB",
+                        "HWB",
+                        "RGGBG",
+                        "YPbPr",
+                        "YCbCr",
+                        "YDbDr",
+                        "GS",
+                        "YUV",
+                    ],
+                ),
                 "first_channel_only": ("BOOLEAN", {"default": False}),
                 "lowpass1_on": ("BOOLEAN", {"default": True}),
                 "lowpass2_on": ("BOOLEAN", {"default": True}),
@@ -25,21 +43,35 @@ class FrequencyModulation:
                 "lowpass3_cutoff": ("FLOAT", {"default": 0.05, "min": 0.01, "max": 1.0, "step": 0.01}),
                 "negate": ("BOOLEAN", {"default": False}),
                 "blend_mode": (["NONE", "ADD", "SUBTRACT", "MULTIPLY", "SCREEN", "OVERLAY"],),
-            }
+            },
         }
-    
+
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_fm"
     CATEGORY = "GlitchNodes"
 
-    def apply_fm(self, image, carrier_frequency, bandwidth, quantization, colorspace, first_channel_only,
-                 lowpass1_on, lowpass2_on, lowpass3_on, lowpass1_cutoff, lowpass2_cutoff, lowpass3_cutoff,
-                 negate, blend_mode):
+    def apply_fm(
+        self,
+        image,
+        carrier_frequency,
+        bandwidth,
+        quantization,
+        colorspace,
+        first_channel_only,
+        lowpass1_on,
+        lowpass2_on,
+        lowpass3_on,
+        lowpass1_cutoff,
+        lowpass2_cutoff,
+        lowpass3_cutoff,
+        negate,
+        blend_mode,
+    ):
         with tqdm(total=7, desc="Applying FM Processing") as pbar:
             img = image.float() / 255.0
             original_img = img.clone()
             pbar.update(1)
-            
+
             img = self.to_colorspace(img, colorspace)
             if first_channel_only:
                 img = img[:, 0:1]
@@ -56,7 +88,7 @@ class FrequencyModulation:
             pbar.update(1)
 
             demodulated = torch.diff(modulated, dim=-1)
-            demodulated = F.pad(demodulated, (1, 0, 0, 0), mode='replicate')
+            demodulated = F.pad(demodulated, (1, 0, 0, 0), mode="replicate")
             pbar.update(1)
 
             if lowpass1_on:
@@ -70,13 +102,13 @@ class FrequencyModulation:
             result = (demodulated - demodulated.min()) / (demodulated.max() - demodulated.min())
             if negate:
                 result = 1 - result
-            
+
             result = self.from_colorspace(result, colorspace)
             if blend_mode != "NONE":
                 result = self.apply_blend_mode(original_img, result, blend_mode)
             pbar.update(1)
 
-            return (result * 255).clamp(0, 255).byte(),
+            return ((result * 255).clamp(0, 255).byte(),)
 
     def apply_lowpass(self, signal, cutoff):
         kernel = torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=torch.float32, device=signal.device) / 16
@@ -86,27 +118,27 @@ class FrequencyModulation:
     def apply_blend_mode(self, img1, img2, mode):
         if mode == "ADD":
             return torch.clamp(img1 + img2, 0, 1)
-        elif mode == "SUBTRACT":
+        if mode == "SUBTRACT":
             return torch.clamp(img1 - img2, 0, 1)
-        elif mode == "MULTIPLY":
+        if mode == "MULTIPLY":
             return img1 * img2
-        elif mode == "SCREEN":
+        if mode == "SCREEN":
             return 1 - (1 - img1) * (1 - img2)
-        elif mode == "OVERLAY":
+        if mode == "OVERLAY":
             return torch.where(img1 < 0.5, 2 * img1 * img2, 1 - 2 * (1 - img1) * (1 - img2))
         return img2
 
     def to_colorspace(self, img, colorspace):
         if colorspace == "RGB":
             return img
-        elif colorspace == "YUV":
+        if colorspace == "YUV":
             return self.rgb_to_yuv(img)
         return img
 
     def from_colorspace(self, img, colorspace):
         if colorspace == "RGB":
             return img
-        elif colorspace == "YUV":
+        if colorspace == "YUV":
             return self.yuv_to_rgb(img)
         return img
 
