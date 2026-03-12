@@ -6,13 +6,19 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import random
 import torch
-from tqdm import tqdm
+import comfy.utils
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ASCII:
+    """Converts images to ASCII art with customizable font colors and characters."""
     CATEGORY = 'GlitchNodes'
     FUNCTION = 'execute'
     OUTPUT_NODE = False
     RETURN_TYPES = ('IMAGE',)
+    RETURN_NAMES = ('image',)
+    DESCRIPTION = "Renders images as ASCII art with gradient text coloring and optional background effects"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -44,7 +50,8 @@ class ASCII:
 
         # 2) Make ASCII
         ascii_images = []
-        for img in tqdm(pil_images, desc='Generating ASCII'):
+        pbar_ascii = comfy.utils.ProgressBar(len(pil_images))
+        for img in pil_images:
             ascii_images.append(
                 self._make_ascii(
                     img, background, fontColor, fontColor2,
@@ -52,16 +59,19 @@ class ASCII:
                     invert, randomness, textType, textInput
                 )
             )
+            pbar_ascii.update(1)
 
         # 3) Back to tensors
         ascii_tensors = []
-        for img in tqdm(ascii_images, desc='Converting to tensors'):
+        pbar_tensors = comfy.utils.ProgressBar(len(ascii_images))
+        for img in ascii_images:
             arr = np.array(img).astype(np.float32) / 255.0
             if arr.ndim == 2:
                 arr = np.stack([arr]*3, axis=-1)
             ascii_tensors.append(torch.from_numpy(arr))
+            pbar_tensors.update(1)
 
-        return (ascii_tensors,)
+        return (torch.stack(ascii_tensors),)
 
     def _tensor_to_pil(self, image):
         if isinstance(image, dict):
@@ -70,7 +80,7 @@ class ASCII:
             return image
         try:
             arr = image.cpu().numpy() if hasattr(image, 'cpu') else np.array(image)
-        except:
+        except Exception:
             arr = np.array(image)
         out = []
         if arr.ndim == 4:

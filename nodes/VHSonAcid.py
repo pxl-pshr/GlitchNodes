@@ -1,11 +1,15 @@
 # https://x.com/_pxlpshr
 # https://instagram.com/pxl.pshr/
 
+import logging
 import torch
 import numpy as np
-from tqdm import tqdm
+import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 class VHSonAcid:
+    """Apply VHS-style glitch effects with random slice displacement."""
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -39,8 +43,10 @@ class VHSonAcid:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_glitch"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply VHS-style glitch effects with slice displacement and RGB channel shifting"
 
     def create_slice_indices(self, height, slice_size):
         """Create random slice indices"""
@@ -109,27 +115,19 @@ class VHSonAcid:
         }
         
         output_batch = []
-        
-        print(f"\n{'='*50}")
-        print(f"Applying glitch effects:")
-        print(f"Batch size: {batch_size}")
-        print(f"Parameters:")
-        print(f"- Slice size: {slice_size}")
-        print(f"- Offset range: {offset_range}")
-        print(f"- Color shift: {color_shift}")
-        print(f"- Glitch probability: {glitch_probability}")
-        
-        with tqdm(total=batch_size, desc="Processing images") as pbar:
-            for b in range(batch_size):
-                img = images[b].cpu().numpy()
-                canvas = self.process_single_image(img)
-                canvas_tensor = torch.from_numpy(canvas).float()
-                output_batch.append(canvas_tensor)
-                pbar.update(1)
-        
+
+        logger.info(f"Applying glitch effects: batch_size={batch_size}, slice_size={slice_size}, offset_range={offset_range}, color_shift={color_shift}, glitch_probability={glitch_probability}")
+
+        pbar = comfy.utils.ProgressBar(batch_size)
+        for b in range(batch_size):
+            img = images[b].cpu().numpy()
+            canvas = self.process_single_image(img)
+            canvas_tensor = torch.from_numpy(canvas).float()
+            output_batch.append(canvas_tensor)
+            pbar.update(1)
+
         result = torch.stack(output_batch).to(device)
-        
-        print(f"\nProcessing complete!")
-        print(f"{'='*50}")
+
+        logger.info("Glitch processing complete!")
         
         return (result,)

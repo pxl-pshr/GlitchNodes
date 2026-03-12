@@ -2,16 +2,16 @@
 # https://instagram.com/pxl.pshr/
 
 import numpy as np
+import logging
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 import math
 import torch
-from tqdm import tqdm
+import comfy.utils
 
-CATEGORY = "GlitchNodes"
+logger = logging.getLogger(__name__)
 
 class LineScreen:
-    def __init__(self):
-        pass
+    """Convert images to line screen patterns with customizable angle and spacing"""
         
     @classmethod
     def INPUT_TYPES(s):
@@ -98,8 +98,8 @@ class LineScreen:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "apply_line_screen"
-    
-    CATEGORY = CATEGORY
+    CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Convert images to line screen patterns with customizable angle and spacing"
     
     def create_line_pattern(self, width, height, spacing, angle, invert, line_color, bg_color):
         diagonal = int(math.sqrt(width**2 + height**2)) * 2
@@ -159,8 +159,9 @@ class LineScreen:
         
         result_list = []
         image_np_batch = image.cpu().numpy()
-        
-        for b in tqdm(range(B), desc="Creating line screen", unit="img"):
+        pbar = comfy.utils.ProgressBar(B)
+
+        for b in range(B):
             single_result = self.process_single_image(
                 image_np_batch[b],
                 W, H,
@@ -173,6 +174,7 @@ class LineScreen:
                 bg_color_r, bg_color_g, bg_color_b
             )
             result_list.append(single_result)
+            pbar.update(1)
         
         result_array = np.stack(result_list)
         result_tensor = torch.from_numpy(result_array).to(device=device, dtype=torch.float32)

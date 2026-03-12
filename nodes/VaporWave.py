@@ -1,13 +1,15 @@
 # https://x.com/_pxlpshr
 # https://instagram.com/pxl.pshr/
 
+import logging
 import numpy as np
 import torch
-from tqdm import tqdm
+import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 class VaporWave:
-    def __init__(self):
-        pass
+    """Apply vaporwave aesthetic color quantization."""
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -69,16 +71,18 @@ class VaporWave:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_vaporwave"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply vaporwave aesthetic color quantization with customizable thresholds and color palette"
 
-    def apply_vaporwave(self, image, threshold_dark, threshold_light, 
+    def apply_vaporwave(self, image, threshold_dark, threshold_light,
                        mid_threshold_1, mid_threshold_2, mid_threshold_3,
                        color1_r, color1_g, color1_b,
                        color2_r, color2_g, color2_b,
                        color3_r, color3_g, color3_b,
                        color4_r, color4_g, color4_b):
-        print("Applying VaporWave effect...")
+        logger.info("Applying VaporWave effect...")
         
         # Convert to numpy array
         np_image = image.cpu().numpy()
@@ -101,31 +105,31 @@ class VaporWave:
         # Process in chunks with progress bar
         chunk_size = 100000  # Adjust based on memory constraints
         num_chunks = (flat_image.shape[0] + chunk_size - 1) // chunk_size
-        
-        with tqdm(total=num_chunks, desc="VAPORWAVING") as pbar:
-            for i in range(0, flat_image.shape[0], chunk_size):
-                chunk = flat_image[i:i+chunk_size]
-                
-                conditions = [
-                    (chunk <= threshold_dark),
-                    (chunk > threshold_dark) & (chunk <= mid_threshold_1),
-                    (chunk > mid_threshold_1) & (chunk <= mid_threshold_2),
-                    (chunk > mid_threshold_2) & (chunk <= mid_threshold_3),
-                    (chunk > mid_threshold_3) & (chunk <= threshold_light),
-                    (chunk > threshold_light)
-                ]
 
-                choices = [
-                    [0, 0, 0],
-                    colors[0],
-                    colors[1],
-                    colors[2],
-                    colors[3],
-                    [1, 1, 1]
-                ]
-                
-                result[i:i+chunk_size] = np.select(conditions, choices, chunk)
-                pbar.update(1)
+        pbar = comfy.utils.ProgressBar(num_chunks)
+        for i in range(0, flat_image.shape[0], chunk_size):
+            chunk = flat_image[i:i+chunk_size]
+
+            conditions = [
+                (chunk <= threshold_dark),
+                (chunk > threshold_dark) & (chunk <= mid_threshold_1),
+                (chunk > mid_threshold_1) & (chunk <= mid_threshold_2),
+                (chunk > mid_threshold_2) & (chunk <= mid_threshold_3),
+                (chunk > mid_threshold_3) & (chunk <= threshold_light),
+                (chunk > threshold_light)
+            ]
+
+            choices = [
+                [0, 0, 0],
+                colors[0],
+                colors[1],
+                colors[2],
+                colors[3],
+                [1, 1, 1]
+            ]
+
+            result[i:i+chunk_size] = np.select(conditions, choices, chunk)
+            pbar.update(1)
         
         # Preserve alpha channel if it exists
         if channels == 4:
@@ -133,16 +137,8 @@ class VaporWave:
         
         # Reshape back to original dimensions
         result = result.reshape(batch, height, width, channels)
-        
-        print("VaporWave effect completed!")
-        
+
+        logger.info("VaporWave effect completed!")
+
         # Convert back to torch tensor
         return (torch.from_numpy(result).to(image.device),)
-
-NODE_CLASS_MAPPINGS = {
-    "VaporWave": VaporWave
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "VaporWave": "Vapor Wave Style"
-}

@@ -3,9 +3,13 @@
 
 import torch
 import numpy as np
-from tqdm.auto import tqdm
+import comfy.utils
+import logging
+
+logger = logging.getLogger(__name__)
 
 class OrderedDithering:
+    """Applies ordered dithering with multiple pattern types and optional animation."""
     DITHER_TYPES = ["Standard", "Artistic", "Animated"]
     COLOR_MODES = ["Color", "Grayscale"]
     
@@ -58,8 +62,10 @@ class OrderedDithering:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_dithering"
-    CATEGORY = "image/effects"
+    CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Applies ordered dithering patterns with support for standard, artistic, and animated modes"
 
     def __init__(self):
         self.bayer_matrices = {
@@ -185,9 +191,9 @@ class OrderedDithering:
             # Apply dithering
             levels = np.linspace(0, 1, num_colors)
             dithered = image + (pattern * (1.0 / num_colors))
-            quantized = np.digitize(dithered, bins=levels) - 1
+            quantized = np.clip(np.digitize(dithered, bins=levels) - 1, 0, num_colors - 1)
             result = levels[quantized]
-            
+
         else:  # Artistic mode
             matrix = self.bayer_matrices["4x4"]
             pattern = np.tile(matrix, 
@@ -211,9 +217,9 @@ class OrderedDithering:
             # Apply artistic dithering
             levels = np.linspace(0, 1, num_colors)
             dithered = image + (pattern * pattern_contrast * (1.0 / num_colors))
-            quantized = np.digitize(dithered, bins=levels) - 1
+            quantized = np.clip(np.digitize(dithered, bins=levels) - 1, 0, num_colors - 1)
             result = levels[quantized]
-        
+
         if color_mode == "Grayscale" and len(result.shape) == 2:
             result = np.repeat(result[..., np.newaxis], 3, axis=2)
             
@@ -226,13 +232,13 @@ class OrderedDithering:
         
         pattern_type = pattern_size if dither_type != "Artistic" else "artistic"
         
-        print(f"\n{'='*50}")
-        print(f"Starting Ordered Dithering:")
-        print(f"Mode: {dither_type}")
-        print(f"Color Mode: {color_mode}")
-        print(f"Pattern: {pattern_type}")
-        print(f"Colors: {num_colors}")
-        print(f"{'='*50}\n")
+        logger.info(f"\n{'='*50}")
+        logger.info(f"Starting Ordered Dithering:")
+        logger.info(f"Mode: {dither_type}")
+        logger.info(f"Color Mode: {color_mode}")
+        logger.info(f"Pattern: {pattern_type}")
+        logger.info(f"Colors: {num_colors}")
+        logger.info(f"{'='*50}\n")
         
         try:
             if dither_type == "Standard" or dither_type == "Artistic":
@@ -245,42 +251,34 @@ class OrderedDithering:
                 output = torch.from_numpy(result).to(device)
                 
             else:  # Animated dithering
+                # Use first image from batch as the source for animation frames
+                source_image = images_np[0]
                 output = torch.zeros((frames,) + images_np.shape[1:], device=device)
-                
+                pbar = comfy.utils.ProgressBar(frames)
+
                 with torch.no_grad():
-                    for frame in tqdm(range(frames), desc="Generating dithered frames", leave=True):
-                        # Direct copy of AnimatedSuperModulation's frame calculation
-                        # They don't use frame/frames-1, just frame/frames and let it wrap naturally
+                    for frame in range(frames):
                         cycle_progress = (frame / frames)
                         cycle_phase = cycle_progress * 2 * np.pi
                         wave_offset = -(cycle_phase * wave_speed)
-                        
+
                         # Normalize to 0-1 range for our dithering
                         pattern_offset = ((wave_offset / (2 * np.pi)) + speed) % 1.0
-                        
-                        frame_result = np.zeros_like(images_np)
-                        for b in range(len(images_np)):
-                            frame_result[b] = self.process_single_frame(
-                                images_np[b], pattern_type, num_colors, color_mode,
-                                pattern_contrast, threshold_offset=pattern_offset, scale=scale, invert=invert
-                            )
-                        output[frame] = torch.from_numpy(frame_result[0]).to(device)
+
+                        frame_result = self.process_single_frame(
+                            source_image, pattern_type, num_colors, color_mode,
+                            pattern_contrast, threshold_offset=pattern_offset, scale=scale, invert=invert
+                        )
+                        output[frame] = torch.from_numpy(frame_result).to(device)
+                        pbar.update(1)
             
-            print(f"\n{'='*50}")
-            print(f"Dithering complete!")
-            print(f"Output shape: {output.shape}")
-            print(f"{'='*50}")
-            
+            logger.info(f"\n{'='*50}")
+            logger.info(f"Dithering complete!")
+            logger.info(f"Output shape: {output.shape}")
+            logger.info(f"{'='*50}")
+
             return (output,)
-            
+
         except Exception as e:
-            print(f"Error during processing: {str(e)}")
-            raise e
-
-NODE_CLASS_MAPPINGS = {
-    "OrderedDithering": OrderedDithering
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "OrderedDithering": "Ordered Dithering"
-}
+            logger.error(f"Error during processing: {str(e)}")
+            raise

@@ -4,10 +4,9 @@
 import torch
 import numpy as np
 import logging
-from tqdm import tqdm
+import comfy.utils
 import cv2
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class Corruptor:
@@ -52,8 +51,10 @@ class Corruptor:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_glitch"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply controlled corruption effects to images using wavelet transformations"
 
     def apply_glitch(self, image, scaling_factor_in, scaling_factor_out, noise_strength, color_space, 
                     channels_combined, wavelet_floor_mode="regular", wavelet_padding="edge", 
@@ -97,16 +98,16 @@ class Corruptor:
             if image.dim() == 4:
                 # For batch processing, create one progress bar for the entire batch
                 batch_size = image.shape[0]
-                with tqdm(total=batch_size, desc="Processing images") as pbar:
-                    results = []
-                    for img in image:
-                        results.append(self._process_single_image(
-                            img, scaling_factor_in, scaling_factor_out, 
-                            noise_strength, color_space, channels_combined,
-                            wavelet_floor_mode, wavelet_padding, 
-                            wavelet_threshold, noise_distribution
-                        ))
-                        pbar.update(1)
+                pbar = comfy.utils.ProgressBar(batch_size)
+                results = []
+                for img in image:
+                    results.append(self._process_single_image(
+                        img, scaling_factor_in, scaling_factor_out,
+                        noise_strength, color_space, channels_combined,
+                        wavelet_floor_mode, wavelet_padding,
+                        wavelet_threshold, noise_distribution
+                    ))
+                    pbar.update(1)
                 result = torch.stack(results)
             else:
                 result = self._process_single_image(

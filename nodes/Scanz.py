@@ -1,20 +1,27 @@
 # https://x.com/_pxlpshr
 # https://instagram.com/pxl.pshr/
 
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import cv2
-from tqdm import tqdm
+import comfy.utils
 from typing import Tuple, List, Optional
 
+logger = logging.getLogger(__name__)
+
 class Scanz:
+    """Multi-effect glitch node with waves, scan lines, and color distortions."""
     def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.use_gpu = torch.cuda.is_available() and cv2.cuda.getCudaEnabledDeviceCount() > 0
+        self.use_gpu = False
+        try:
+            self.use_gpu = torch.cuda.is_available() and cv2.cuda.getCudaEnabledDeviceCount() > 0
+        except AttributeError:
+            pass
         if self.use_gpu:
-            print("GPU acceleration enabled")
+            logger.info("GPU acceleration enabled")
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -113,8 +120,10 @@ class Scanz:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "process_image"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply multiple glitch effects including wave distortion, scan lines, and channel shifts"
 
     def normalize_image(self, image: np.ndarray) -> np.ndarray:
         if image.dtype != np.float32:
@@ -367,11 +376,14 @@ class Scanz:
             batch_np = image.cpu().numpy()
         else:
             batch_np = image
-            
+
+        pbar = comfy.utils.ProgressBar(len(batch_np))
         processed_images = []
-        for i in tqdm(range(len(batch_np)), desc="Processing frames"):
+        for i in range(len(batch_np)):
             result = self.process_single_image(batch_np[i], params)
             processed_images.append(result)
-            
+            pbar.update(1)
+
         result_batch = np.stack(processed_images, axis=0)
-        return (torch.from_numpy(result_batch).to(self.device),)
+        device = image.device if isinstance(image, torch.Tensor) else "cpu"
+        return (torch.from_numpy(result_batch).to(device),)

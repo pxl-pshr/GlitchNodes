@@ -3,14 +3,12 @@
 
 import numpy as np
 import torch
+import logging
 from PIL import Image
 import random
-try:
-    from tqdm import tqdm
-except ImportError:
-    # Fallback if tqdm is not installed
-    def tqdm(iterable, desc=None, total=None):
-        return iterable
+import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 class DitherMe:
     """
@@ -80,9 +78,11 @@ class DitherMe:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "dither"
     CATEGORY = "GlitchNodes"
-    
+    DESCRIPTION = "Apply various dithering algorithms including error diffusion and ordered dither patterns"
+
     def __init__(self):
         # Error diffusion matrices for various algorithms
         self.error_matrices = {
@@ -181,55 +181,42 @@ class DitherMe:
         return image
     
     def _error_diffusion_dither(self, image, algorithm, threshold=0.5):
-        """Apply error diffusion dithering with progress tracking for large images"""
+        """Apply error diffusion dithering"""
         if algorithm not in self.error_matrices:
             return image
-        
+
         matrix_info = self.error_matrices[algorithm]
         matrix = np.array(matrix_info["matrix"])
         offset = matrix_info["offset"]
-        
+
         height, width = image.shape[:2]
         if len(image.shape) == 3:
             # Convert to grayscale for dithering
             gray = np.dot(image, [0.299, 0.587, 0.114])
         else:
             gray = image.copy()
-        
+
         output = np.zeros_like(gray)
-        
-        # Only show progress bar for large images
-        total_pixels = height * width
-        use_progress = total_pixels > 500000  # Show progress for images > 500k pixels
-        
-        if use_progress:
-            pbar = tqdm(total=height, desc=f"Error diffusion ({algorithm})", unit="rows", leave=False)
-        
+
         for y in range(height):
             for x in range(width):
                 old_pixel = gray[y, x]
                 new_pixel = 1.0 if old_pixel > threshold else 0.0
                 output[y, x] = new_pixel
                 error = old_pixel - new_pixel
-                
+
                 # Distribute error to neighboring pixels
                 for dy in range(len(matrix)):
                     for dx in range(len(matrix[0])):
                         if matrix[dy][dx] == 0:
                             continue
-                        
+
                         ny = y + dy
                         nx = x + dx - offset[1]
-                        
+
                         if 0 <= ny < height and 0 <= nx < width:
                             gray[ny, nx] += error * matrix[dy][dx]
-            
-            if use_progress:
-                pbar.update(1)
-        
-        if use_progress:
-            pbar.close()
-        
+
         return output
     
     def _ordered_dither(self, image, matrix_type, threshold=0.5, effect_size=1.0):
@@ -286,25 +273,22 @@ class DitherMe:
             shadow_rgb = np.array(self._hex_to_rgb(shadow_color))
             midtone_rgb = np.array(self._hex_to_rgb(midtone_color))
             highlight_rgb = np.array(self._hex_to_rgb(highlight_color))
-            
+
             # Adjust brightness
             shadow_rgb = np.clip(shadow_rgb + shadow_brightness, 0, 1)
             midtone_rgb = np.clip(midtone_rgb + midtone_brightness, 0, 1)
             highlight_rgb = np.clip(highlight_rgb + highlight_brightness, 0, 1)
-            
-            # Create three-level dither
+
+            # Dithered values are binary (0 or 1). For tritone, use a
+            # checkerboard pattern to create midtone regions where highlight
+            # pixels alternate with midtone color.
             output = np.zeros((height, width, 3))
-            
-            # Simple three-level quantization
-            for y in range(height):
-                for x in range(width):
-                    if dithered[y, x] < 0.33:
-                        output[y, x] = shadow_rgb
-                    elif dithered[y, x] < 0.67:
-                        output[y, x] = midtone_rgb
-                    else:
-                        output[y, x] = highlight_rgb
-            
+            checker = ((np.arange(height)[:, None] + np.arange(width)[None, :]) % 2).astype(bool)
+
+            output[dithered == 0] = shadow_rgb
+            output[(dithered == 1) & checker] = highlight_rgb
+            output[(dithered == 1) & ~checker] = midtone_rgb
+
             return output
         
         else:  # monochrome fallback
@@ -528,12 +512,12 @@ class DitherMe:
         batch_size = batch_np.shape[0]
         results = []
         previous_dithered = None
-        
-        # Create progress bar description
-        desc = f"Dithering {batch_size} frames with {algorithm}"
-        
+
+        # Create progress bar
+        pbar = comfy.utils.ProgressBar(batch_size)
+
         # Process each frame in the batch with progress bar
-        for i in tqdm(range(batch_size), desc=desc, unit="frames"):
+        for i in range(batch_size):
             frame = batch_np[i]
             
             # Ensure image is in [0, 1] range
@@ -563,9 +547,10 @@ class DitherMe:
                 dithered, color_mode, shadow_color, midtone_color, highlight_color,
                 shadow_brightness, midtone_brightness, highlight_brightness
             )
-            
+
             results.append(result)
-        
+            pbar.update(1)
+
         # Stack all results into a batch
         batch_result = np.stack(results, axis=0)
         

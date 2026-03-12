@@ -3,9 +3,12 @@
 
 import torch
 import numpy as np
+import logging
 from scipy.ndimage import gaussian_filter1d
 import cv2
-from tqdm import tqdm
+import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 class LuminousFlow:
     """
@@ -76,8 +79,10 @@ class LuminousFlow:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "create_luminous_flow"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Transform images into flowing luminous strands with ethereal glow effects"
 
     def enhance_colors(self, color, vibrancy, contrast):
         """Enhanced color processing with neon effect"""
@@ -147,9 +152,8 @@ class LuminousFlow:
 
     def process_image(self, img, params, batch_idx=0, total_batches=1):
         height, width = img.shape[:2]
-        
-        print(f"\nProcessing image {batch_idx + 1}/{total_batches}")
-        print(f"Image size: {width}x{height}")
+
+        logger.info(f"Processing image {batch_idx + 1}/{total_batches}, size: {width}x{height}")
         
         # Enhanced preprocessing with more contrast
         intensity_map = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -165,40 +169,40 @@ class LuminousFlow:
         
         max_lines = (height - 2 * params["line_spacing"]) // params["line_spacing"]
         line_positions = np.linspace(params["line_spacing"], height - params["line_spacing"], max_lines)
-        
-        print(f"Generating {len(line_positions)} luminous lines...")
-        
-        with tqdm(total=len(line_positions), desc="Drawing lines", unit="line") as pbar:
-            for pos in line_positions:
-                points = []
-                colors = []
-                
-                for x in range(width):
-                    y_pos = int(pos)
-                    # Enhanced color processing
-                    base_color = img[min(y_pos, height-1), x]
-                    color = base_color * params["glow_intensity"]
-                    color = self.enhance_colors(color, params["vibrancy"], params["contrast"])
-                    color = np.clip(color, 0, 1)
-                    colors.append(color)
-                    
-                    displacement = -intensity_map[y_pos, x] * params["line_spacing"] * params["flow_intensity"]
-                    new_y = np.clip(pos + displacement, 0, height - 1)
-                    points.append((float(x), float(new_y)))
-                
-                if params["smoothing"] > 0:
-                    points = np.array(points)
-                    points[:, 1] = gaussian_filter1d(points[:, 1], params["smoothing"])
-                
-                for i in range(len(points) - 1):
-                    self.draw_line(canvas, 
-                                 points[i], 
-                                 points[i + 1], 
-                                 colors[i], 
-                                 params["line_thickness"],
-                                 params["glow_spread"])
-                
-                pbar.update(1)
+
+        logger.info(f"Generating {len(line_positions)} luminous lines")
+
+        pbar = comfy.utils.ProgressBar(len(line_positions))
+        for pos in line_positions:
+            points = []
+            colors = []
+
+            for x in range(width):
+                y_pos = int(pos)
+                # Enhanced color processing
+                base_color = img[min(y_pos, height-1), x]
+                color = base_color * params["glow_intensity"]
+                color = self.enhance_colors(color, params["vibrancy"], params["contrast"])
+                color = np.clip(color, 0, 1)
+                colors.append(color)
+
+                displacement = -intensity_map[y_pos, x] * params["line_spacing"] * params["flow_intensity"]
+                new_y = np.clip(pos + displacement, 0, height - 1)
+                points.append((float(x), float(new_y)))
+
+            if params["smoothing"] > 0:
+                points = np.array(points)
+                points[:, 1] = gaussian_filter1d(points[:, 1], params["smoothing"])
+
+            for i in range(len(points) - 1):
+                self.draw_line(canvas,
+                             points[i],
+                             points[i + 1],
+                             colors[i],
+                             params["line_thickness"],
+                             params["glow_spread"])
+
+            pbar.update(1)
         
         return canvas
 
@@ -206,18 +210,11 @@ class LuminousFlow:
                            smoothing, glow_intensity, darkness, vibrancy, glow_spread,
                            contrast):
         batch_size = image.shape[0]
-        
-        print(f"\n{'='*50}")
-        print("Starting Luminous Flow generation")
-        print(f"Batch size: {batch_size}")
-        print(f"Parameters:")
-        print(f"- Line spacing: {line_spacing}")
-        print(f"- Flow intensity: {flow_intensity}")
-        print(f"- Glow intensity: {glow_intensity}")
-        print(f"- Vibrancy: {vibrancy}")
-        print(f"- Contrast: {contrast}")
-        print(f"- Glow spread: {glow_spread}")
-        print(f"{'='*50}\n")
+
+        logger.info(f"Starting Luminous Flow generation with batch size: {batch_size}, "
+                   f"line_spacing={line_spacing}, flow_intensity={flow_intensity}, "
+                   f"glow_intensity={glow_intensity}, vibrancy={vibrancy}, contrast={contrast}, "
+                   f"glow_spread={glow_spread}")
         
         image_np = image.cpu().numpy()
         
@@ -234,15 +231,13 @@ class LuminousFlow:
         }
         
         output_batch = []
-        with tqdm(total=batch_size, desc="Processing batch", unit="image") as pbar:
-            for i in range(batch_size):
-                result = self.process_image(image_np[i], params, i, batch_size)
-                result_tensor = torch.from_numpy(result).float()
-                output_batch.append(result_tensor)
-                pbar.update(1)
-        
-        print(f"\n{'='*50}")
-        print("Processing complete!")
-        print(f"{'='*50}")
-        
+        pbar = comfy.utils.ProgressBar(batch_size)
+        for i in range(batch_size):
+            result = self.process_image(image_np[i], params, i, batch_size)
+            result_tensor = torch.from_numpy(result).float()
+            output_batch.append(result_tensor)
+            pbar.update(1)
+
+        logger.info("Luminous Flow processing complete")
+
         return (torch.stack(output_batch),)

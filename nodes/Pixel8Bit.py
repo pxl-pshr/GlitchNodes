@@ -4,18 +4,13 @@
 from typing import List
 import torch
 import numpy as np
+import logging
 from PIL import Image
 import re
 
-# --- tqdm (with safe fallback) ---
-try:
-    from tqdm import tqdm as _tqdm
-    def tqdm(iterable, **kwargs):
-        return _tqdm(iterable, **kwargs)
-except Exception:
-    def tqdm(iterable, **kwargs):
-        # no-op progress if tqdm missing
-        return iterable
+logger = logging.getLogger(__name__)
+
+import comfy.utils
 
 ########################
 # Utility: Palettes
@@ -327,12 +322,14 @@ class Pixel8Bit:
     - Dithering (Ordered / Floyd–Steinberg)
     - Rich fixed palettes: PICO-8, Game Boy, NES, C64, ZX Spectrum, Apple II, EGA-16, VGA-256 (dynamic),
                            Amiga Workbench, Atari 2600 subset, MSX, CGA variants
-    Shows per-frame progress in terminal via tqdm (safe fallback if missing).
+    Shows per-frame progress via ComfyUI's built-in progress bar.
     """
     CATEGORY = "GlitchNodes"
     FUNCTION = "execute"
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     OUTPUT_NODE = False
+    DESCRIPTION = "Convert images to 8-bit retro look with pixelation, palette quantization, and dithering"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -384,8 +381,9 @@ class Pixel8Bit:
         img_np = img.detach().cpu().numpy().astype(np.float32)
         out_frames = []
 
-        # Progress bar in terminal
-        for b in tqdm(range(B), desc="[Pixel8Bit] Processing frames", unit="frame"):
+        # Progress bar
+        pbar = comfy.utils.ProgressBar(B)
+        for b in range(B):
             frame = img_np[b]
             if C not in (1, 3, 4):
                 frame = frame[..., :3]
@@ -404,6 +402,7 @@ class Pixel8Bit:
                 gamma=gamma
             )
             out_frames.append(out)
+            pbar.update(1)
 
         out_np = np.stack(out_frames, axis=0)  # [B,H,W,3]
         out_t = torch.from_numpy(out_np).to(IMAGE.device, dtype=IMAGE.dtype)

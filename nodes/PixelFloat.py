@@ -1,12 +1,16 @@
 # https://x.com/_pxlpshr
 # https://instagram.com/pxl.pshr/
 
+import logging
 import torch
 import numpy as np
 import cv2
-from tqdm import tqdm
+import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 class PixelFloat:
+    """Apply gravity effects to pixel blocks with motion estimation."""
     def __init__(self):
         self.old_mvs = None
         self.rt = 0
@@ -77,8 +81,10 @@ class PixelFloat:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "process_frames"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Applies gravity effects to pixel blocks based on optical flow motion estimation"
 
     def ensure_rgb(self, image):
         if len(image.shape) == 3:
@@ -291,22 +297,24 @@ class PixelFloat:
         
         self.min_blocks = min_blocks
         self.max_blocks = max_blocks
-        
-        # Simplified progress bar configuration
-        pbar = tqdm(range(batch_size-1), 
-                   desc="Processing frames",
-                   leave=True)
-        
+
+        # Reset state for new sequence
+        self.old_mvs = None
+        self.rt = 0
+
+        # Create progress bar
+        pbar = comfy.utils.ProgressBar(max(batch_size - 1, 1))
+
         try:
-            for i in pbar:
+            for i in range(batch_size - 1):
                 current_frame = frames_np[i].copy()
                 next_frame = frames_np[i+1].copy()
-                
+
                 current_frame = (current_frame * 255).astype(np.uint8)
                 next_frame = (next_frame * 255).astype(np.uint8)
-                
+
                 mvs, actual_block_size = self.estimate_motion_vectors(
-                    current_frame, 
+                    current_frame,
                     next_frame,
                     flow_scale,
                     flow_levels,
@@ -316,23 +324,21 @@ class PixelFloat:
                 )
                 modified_mvs = self.apply_anti_gravity(mvs, gravity_strength, motion_threshold)
                 processed_frame = self.apply_motion_vectors(
-                    current_frame, 
-                    modified_mvs, 
+                    current_frame,
+                    modified_mvs,
                     actual_block_size,
                     interpolation_factor
                 )
-                
+
                 processed_frame = processed_frame.astype(np.float32) / 255.0
                 processed_frames.append(processed_frame)
-                
-                # Update progress description with current frame
-                pbar.set_description(f"Processing frame {i+1}/{batch_size-1}")
-                
-            pbar.close()
-            
+
+                pbar.update(1)
+
         except Exception as e:
-            pbar.close()
-            raise RuntimeError(f"Error processing frame {i}: {str(e)}")
+            frame_idx = i if 'i' in dir() else 'unknown'
+            logger.error(f"Error processing frame {frame_idx}: {str(e)}")
+            raise RuntimeError(f"Error processing frame {frame_idx}: {str(e)}")
         
         processed_frames.append(frames_np[-1])
         processed_frames = np.stack(processed_frames)

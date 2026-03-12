@@ -1,12 +1,16 @@
 # https://x.com/_pxlpshr
 # https://instagram.com/pxl.pshr/
 
+import logging
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
+import comfy.utils
 import time
 
-class interference:
+logger = logging.getLogger(__name__)
+
+class Interference:
+    """Apply bayer-matrix-inspired sorting and color effects."""
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -42,8 +46,10 @@ class interference:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_sort_shader"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply bayer-matrix-inspired pixel sorting with various color effects"
 
     def apply_sort_shader(self, image, horizontal_iterations, vertical_iterations, 
                          shift_amount, color_shift, color_mode, preserve_brightness):
@@ -117,20 +123,26 @@ class interference:
         pos = torch.stack(torch.meshgrid(torch.arange(H), torch.arange(W)), dim=-1).to(image.device)
         pos = pos.unsqueeze(0).expand(B, -1, -1, -1)
 
+        # Create single progress bar for both operations
+        total_iterations = horizontal_iterations + vertical_iterations
+        pbar = comfy.utils.ProgressBar(total_iterations)
+
         def sort_horizontal(image, iterations):
             h_start = time.time()
-            for i in tqdm(range(iterations), desc="Horizontal Sort"):
+            for i in range(iterations):
                 image = compare(image, torch.roll(image, shifts=shift_amount, dims=2), pos, i)
+                pbar.update(1)
             h_time = time.time() - h_start
-            print(f"Horizontal sort: {h_time:.3f}s")
+            logger.info(f"Horizontal sort: {h_time:.3f}s")
             return image
 
         def sort_vertical(image, iterations):
             v_start = time.time()
-            for i in tqdm(range(iterations), desc="Vertical Sort"):
+            for i in range(iterations):
                 image = compare_h(image, torch.roll(image, shifts=shift_amount, dims=1), pos, i)
+                pbar.update(1)
             v_time = time.time() - v_start
-            print(f"Vertical sort: {v_time:.3f}s")
+            logger.info(f"Vertical sort: {v_time:.3f}s")
             return image
 
         # Apply sorting with progress bars
@@ -140,6 +152,6 @@ class interference:
             image = sort_vertical(image, vertical_iterations)
 
         total_time = time.time() - start_time
-        print(f"Total time: {total_time:.3f}s")
+        logger.debug(f"Total time: {total_time:.3f}s")
 
         return (image,)

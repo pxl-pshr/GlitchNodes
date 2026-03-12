@@ -4,9 +4,13 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from tqdm import tqdm
+import comfy.utils
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FrequencyModulation:
+    """Applies frequency modulation effects to create glitchy visual artifacts."""
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -15,7 +19,7 @@ class FrequencyModulation:
                 "carrier_frequency": ("FLOAT", {"default": 10, "min": 0.01, "max": 10.0, "step": 0.01}),
                 "bandwidth": ("FLOAT", {"default": 10, "min": 0.1, "max": 10.0, "step": 0.1}),
                 "quantization": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
-                "colorspace": (["RGB", "OHTA", "CMY", "XYZ", "YXY", "HCL", "LUV", "LAB", "HWB", "RGGBG", "YPbPr", "YCbCr", "YDbDr", "GS", "YUV"],),
+                "colorspace": (["RGB", "YUV"],),
                 "first_channel_only": ("BOOLEAN", {"default": False}),
                 "lowpass1_on": ("BOOLEAN", {"default": True}),
                 "lowpass2_on": ("BOOLEAN", {"default": True}),
@@ -29,17 +33,22 @@ class FrequencyModulation:
         }
     
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "apply_fm"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Modulates image using frequency domain techniques with customizable carrier frequency and bandwidth"
 
     def apply_fm(self, image, carrier_frequency, bandwidth, quantization, colorspace, first_channel_only,
                  lowpass1_on, lowpass2_on, lowpass3_on, lowpass1_cutoff, lowpass2_cutoff, lowpass3_cutoff,
                  negate, blend_mode):
-        with tqdm(total=7, desc="Applying FM Processing") as pbar:
-            img = image.float() / 255.0
+        logger.info("Starting frequency modulation processing...")
+        try:
+            pbar = comfy.utils.ProgressBar(7)
+            # ComfyUI IMAGE is [B,H,W,C] — convert to [B,C,H,W] for conv2d processing
+            img = image.float().permute(0, 3, 1, 2)
             original_img = img.clone()
             pbar.update(1)
-            
+
             img = self.to_colorspace(img, colorspace)
             if first_channel_only:
                 img = img[:, 0:1]
@@ -67,16 +76,27 @@ class FrequencyModulation:
                 demodulated = self.apply_lowpass(demodulated, lowpass3_cutoff)
             pbar.update(1)
 
-            result = (demodulated - demodulated.min()) / (demodulated.max() - demodulated.min())
+            denom = demodulated.max() - demodulated.min()
+            if denom < 1e-8:
+                result = torch.zeros_like(demodulated)
+            else:
+                result = (demodulated - demodulated.min()) / denom
             if negate:
                 result = 1 - result
-            
+
             result = self.from_colorspace(result, colorspace)
             if blend_mode != "NONE":
                 result = self.apply_blend_mode(original_img, result, blend_mode)
             pbar.update(1)
 
-            return (result * 255).clamp(0, 255).byte(),
+            # Convert back from [B,C,H,W] to [B,H,W,C]
+            result = result.permute(0, 2, 3, 1)
+
+            logger.info("Frequency modulation processing completed")
+            return (result.float().clamp(0, 1),)
+        except Exception as e:
+            logger.error(f"Error in frequency modulation processing: {str(e)}")
+            raise
 
     def apply_lowpass(self, signal, cutoff):
         kernel = torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=torch.float32, device=signal.device) / 16

@@ -4,8 +4,12 @@
 
 import numpy as np
 import torch
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Rekked:
+    """Applies various datamosh-inspired glitch effects with multiple artistic modes."""
     def __init__(self):
         self.modes = {
             "blurbobb": self.blurbobb,
@@ -32,29 +36,37 @@ class Rekked:
         }
 
     RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "apply_Rekked"
+    RETURN_NAMES = ("image",)
+    FUNCTION = "apply_rekked"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Applies datamosh-inspired glitch effects with modes like vaporwave, chimera, void, and more"
 
-    def apply_Rekked(self, image, mode):
-        # Convert to numpy array
-        np_image = image.cpu().numpy()
-        
-        # Get image dimensions
-        batch, height, width, channels = np_image.shape
-        
-        # Reshape to 2D array
-        flat_image = np_image.reshape(-1, channels)
-        
-        # Apply the selected mode
-        moshed_image = self.modes[mode](flat_image.copy(), width, height)
-        
-        # Reshape back to original dimensions
-        moshed_image = moshed_image.reshape(batch, height, width, channels)
-        
-        # Convert back to torch tensor
-        moshed_image = torch.from_numpy(moshed_image).to(image.device)
-        
-        return (moshed_image,)
+    def apply_rekked(self, image, mode):
+        logger.info(f"Applying Rekked effect: {mode}")
+        try:
+            # Convert to numpy array
+            np_image = image.cpu().numpy()
+
+            # Get image dimensions
+            batch, height, width, channels = np_image.shape
+
+            # Reshape to 2D array
+            flat_image = np_image.reshape(-1, channels)
+
+            # Apply the selected mode
+            moshed_image = self.modes[mode](flat_image.copy(), width, height)
+
+            # Reshape back to original dimensions
+            moshed_image = moshed_image.reshape(batch, height, width, channels)
+
+            # Convert back to torch tensor
+            moshed_image = torch.from_numpy(moshed_image).to(image.device)
+
+            logger.info(f"Rekked effect completed")
+            return (moshed_image,)
+        except Exception as e:
+            logger.error(f"Error in Rekked processing: {str(e)}")
+            raise
 
     def blurbobb(self, data, width, height):
         counter = 0
@@ -180,11 +192,12 @@ class Rekked:
             skip = get_closest_root(int(np.random.random() * sq_len))
 
             for _ in range(size):
-                if out_i < data.shape[0]:
-                    ret[out_i, offset] = data[i, offset]
-                    if has_alpha:
-                        ret[out_i, 3] = 1  # Alpha channel
-                    out_i += 1
+                if i >= data.shape[0] or out_i >= data.shape[0]:
+                    break
+                ret[out_i, offset] = data[i, offset]
+                if has_alpha:
+                    ret[out_i, 3] = 1  # Alpha channel
+                out_i += 1
                 i += 1
 
             out_i += skip

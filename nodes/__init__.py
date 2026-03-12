@@ -4,7 +4,7 @@ from .DataBend import DataBend
 from .DitherMe import DitherMe
 from .FrequencyModulation import FrequencyModulation
 from .GlitchIT import GlitchIT
-from .interference import interference
+from .interference import Interference
 from .LineScreen import LineScreen
 from .LuminousFlow import LuminousFlow
 from .OrderedDithering import OrderedDithering
@@ -25,7 +25,7 @@ NODE_CLASS_MAPPINGS = {
     "DitherMe": DitherMe,
     "FrequencyModulation": FrequencyModulation,
     "GlitchIT": GlitchIT,
-    "interference": interference,
+    "Interference": Interference,
     "LineScreen": LineScreen,
     "LuminousFlow": LuminousFlow,
     "OrderedDithering": OrderedDithering,
@@ -47,7 +47,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DitherMe": "DitherMe | GlitchNodes",
     "FrequencyModulation": "Frequency Modulation WIP | GlitchNodes",
     "GlitchIT": "GlitchIT | GlitchNodes",
-    "interference": "interference | GlitchNodes",
+    "Interference": "Interference | GlitchNodes",
     "LineScreen": "LineScreen | GlitchNodes",
     "LuminousFlow": "LuminousFlow | GlitchNodes",
     "OrderedDithering": "Ordered Dithering | GlitchNodes",

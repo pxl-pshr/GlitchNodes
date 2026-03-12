@@ -3,11 +3,15 @@
 
 import torch
 import numpy as np
-from tqdm import tqdm
+import logging
+import comfy.utils
 from scipy import ndimage
 import cv2
 
+logger = logging.getLogger(__name__)
+
 class DataBend:
+    """Apply data bending glitch effects with slicing, color shifts, and distortions"""
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -42,8 +46,10 @@ class DataBend:
         }
 
     RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
     FUNCTION = "generate_databend"
     CATEGORY = "GlitchNodes"
+    DESCRIPTION = "Apply data bending glitch effects with slicing, color shifts, and distortions"
 
     def create_slices(self, height, width, params):
         """Create slice indices based on direction and size parameters"""
@@ -184,41 +190,40 @@ class DataBend:
         return np.clip(result, 0, 1)
 
     def generate_databend(self, images, slice_direction, slice_min_size, slice_max_size,
-                         slice_variability, channel_shift_mode, color_intensity, 
+                         slice_variability, channel_shift_mode, color_intensity,
                          rgb_shift_separate, preserve_bright_areas, glitch_types,
                          pattern_frequency, chaos_amount, seed, wave_distortion,
                          compression_artifacts, pixel_sorting, control_after_generate):
-        
-        if seed != -1:
-            np.random.seed(seed)
-            
-        device = images.device
-        batch_size = images.shape[0]
-        
-        params = locals()
-        del params['self']
-        del params['images']
-        del params['device']
-        del params['batch_size']
-        del params['control_after_generate']
-        
-        output_batch = []
-        
-        print(f"\n{'='*50}")
-        print(f"Applying DataBend effects:")
-        print(f"Batch size: {batch_size}")
-        
-        with tqdm(total=batch_size, desc="Processing images") as pbar:
+        try:
+            if seed != -1:
+                np.random.seed(seed)
+
+            device = images.device
+            batch_size = images.shape[0]
+
+            params = locals()
+            del params['self']
+            del params['images']
+            del params['device']
+            del params['batch_size']
+            del params['control_after_generate']
+
+            output_batch = []
+
+            logger.info(f"Applying DataBend effects with batch size: {batch_size}")
+
+            pbar = comfy.utils.ProgressBar(batch_size)
             for b in range(batch_size):
                 img = images[b].cpu().numpy()
                 canvas = self.process_single_image(img, params)
                 canvas_tensor = torch.from_numpy(canvas).float()
                 output_batch.append(canvas_tensor)
                 pbar.update(1)
-        
-        result = torch.stack(output_batch).to(device)
-        
-        print(f"\nProcessing complete!")
-        print(f"{'='*50}")
-        
-        return (result,)
+
+            result = torch.stack(output_batch).to(device)
+            logger.info("DataBend processing complete")
+
+            return (result,)
+        except Exception as e:
+            logger.error(f"Error in DataBend processing: {str(e)}")
+            raise
