@@ -6,7 +6,6 @@ import torch
 import numpy as np
 import comfy.utils
 import math
-from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -63,55 +62,38 @@ class PixelRedistribution:
             adjusted = adjusted * (1 + brightness)
         return np.clip(adjusted, 0, 1)
 
-    def calculate_distance_np(self, coords, width, height, mode, pattern, strength):
-        """Vectorized distance calculation using numpy arrays.
-        coords: (N, 2) array with (x, y) columns."""
-        x = coords[:, 0].astype(np.float64)
-        y = coords[:, 1].astype(np.float64)
+    def calculate_distance_map(self, width, height, mode, pattern, strength):
+        """Compute spatial distance for every pixel — fully vectorized."""
+        ys, xs = np.mgrid[0:height, 0:width]
+        x = xs.astype(np.float64)
+        y = ys.astype(np.float64)
 
         if mode == "center":
-            base_distance = np.sqrt((x - width / 2) ** 2 + (y - height / 2) ** 2)
+            base = np.sqrt((x - width / 2) ** 2 + (y - height / 2) ** 2)
         elif mode == "top":
-            base_distance = y.copy()
+            base = y.copy()
         elif mode == "left":
-            base_distance = x.copy()
+            base = x.copy()
         elif mode == "random":
-            base_distance = np.random.rand(len(x))
+            base = np.random.rand(height, width)
         else:
-            base_distance = np.zeros(len(x))
+            base = np.zeros((height, width))
 
         if pattern == "spiral":
             angle = np.arctan2(y - height / 2, x - width / 2)
-            base_distance = base_distance + angle * width / (2 * math.pi)
+            base = base + angle * width / (2 * math.pi)
         elif pattern == "waves":
-            wave = np.sin(x * 0.1) * height * 0.25
-            base_distance = base_distance + wave
+            base = base + np.sin(x * 0.1) * height * 0.25
         elif pattern == "diagonal":
-            base_distance = base_distance + (x + y) * 0.5
+            base = base + (x + y) * 0.5
 
-        return base_distance * strength
-
-    def get_adjacent_colors_np(self, color, searched, order, color_size):
-        """Get adjacent colors using plain tuples — no torch overhead."""
-        adj_list = []
-        for channel in order:
-            if color[channel] > 0:
-                new_color = list(color)
-                new_color[channel] -= 1
-                new_color = tuple(new_color)
-                if new_color not in searched:
-                    adj_list.append(new_color)
-            if color[channel] < color_size - 1:
-                new_color = list(color)
-                new_color[channel] += 1
-                new_color = tuple(new_color)
-                if new_color not in searched:
-                    adj_list.append(new_color)
-        return adj_list
+        return base * strength
 
     def process_single_image(self, image_np, color_size, order, distance_mode, pattern, strength, contrast, brightness, invert):
-        """Process a single [H, W, C] numpy image."""
+        """Process a single [H, W, C] numpy image — fully vectorized."""
         height, width, channels = image_np.shape
+        n_ch = min(channels, 3)
+        cs = color_size
 
         # Adjust contrast and brightness
         process_image = self.adjust_contrast_brightness(image_np, contrast, brightness)
@@ -119,121 +101,99 @@ class PixelRedistribution:
             process_image = 1.0 - process_image
 
         # Quantize to color_size levels
-        quantized = np.floor(process_image * (color_size - 1)).astype(np.int32)
+        quantized = np.floor(process_image[:, :, :n_ch] * (cs - 1)).astype(np.int32)
 
-        # Group pixels by quantized color — vectorized
-        # Encode each pixel's color as a single int for fast grouping
-        # color key = r * cs^2 + g * cs + b (unique for each color combo)
-        cs = color_size
-        if channels >= 3:
-            color_keys = quantized[:, :, 0] * cs * cs + quantized[:, :, 1] * cs + quantized[:, :, 2]
-        else:
-            color_keys = quantized[:, :, 0]
+        # Spatial distance map — pixels far from the origin are more likely to shift color
+        dist_map = self.calculate_distance_map(width, height, distance_mode, pattern, strength)
+        d_max = dist_map.max()
+        norm_dist = dist_map / d_max if d_max > 0 else np.zeros_like(dist_map)
 
-        # Build mapping: color_key -> list of (x, y) coords
-        flat_keys = color_keys.ravel()
-        ys, xs = np.mgrid[0:height, 0:width]
-        flat_x = xs.ravel()
-        flat_y = ys.ravel()
+        # --- Vectorized diffusion: pixels flow from dense to sparse colors ---
+        # Far-from-origin pixels move first, creating the spatial pattern.
+        n_passes = max(1, int(strength * 5))
+        dist_threshold = max(0.0, 1.0 - strength * 0.5)
+        current_q = quantized.copy()
 
-        # Use numpy sorting to group by color key
-        sort_idx = np.argsort(flat_keys, kind='mergesort')
-        sorted_keys = flat_keys[sort_idx]
-        sorted_x = flat_x[sort_idx]
-        sorted_y = flat_y[sort_idx]
+        for pass_num in range(n_passes):
+            q0 = current_q[:, :, 0]
+            q1 = current_q[:, :, 1] if n_ch >= 2 else q0
+            q2 = current_q[:, :, 2] if n_ch >= 3 else q0
 
-        # Find boundaries between groups
-        boundaries = np.where(np.diff(sorted_keys) != 0)[0] + 1
-        boundaries = np.concatenate([[0], boundaries, [len(sorted_keys)]])
-
-        # Build the color -> coords dict
-        transform_colorspace = {}
-        for i in range(len(boundaries) - 1):
-            start, end = boundaries[i], boundaries[i + 1]
-            key_val = sorted_keys[start]
-            # Decode back to color tuple
-            if channels >= 3:
-                r = int(key_val // (cs * cs))
-                g = int((key_val % (cs * cs)) // cs)
-                b = int(key_val % cs)
-                color = (r, g, b)
+            # Population grid via bincount
+            enc = q0 * cs * cs + q1 * cs + q2 if n_ch >= 3 else q0
+            pop_grid_flat = np.bincount(enc.ravel(), minlength=cs ** n_ch)
+            if n_ch >= 3:
+                pop_grid = pop_grid_flat.reshape(cs, cs, cs)
+                pixel_pop = pop_grid[q0, q1, q2]
             else:
-                color = (int(key_val),)
-            coords = np.column_stack([sorted_x[start:end], sorted_y[start:end]])
-            transform_colorspace[color] = coords  # (N, 2) array of (x, y)
+                pop_grid = pop_grid_flat
+                pixel_pop = pop_grid[q0]
 
-        # Sort pixels within each multi-pixel color group by distance
-        start_keys = sorted(
-            [k for k, v in transform_colorspace.items() if len(v) > 1],
-            key=lambda x: len(transform_colorspace[x])
-        )
+            # Compute populations of all adjacent colors (per channel order × ±1)
+            adj_pops = []
+            adj_channels = []
+            adj_deltas = []
 
-        for start_key in start_keys:
-            coords = transform_colorspace[start_key]
-            distances = self.calculate_distance_np(coords, width, height, distance_mode, pattern, strength)
-            sorted_indices = np.argsort(distances)
-            transform_colorspace[start_key] = coords[sorted_indices]
-
-            # BFS to find neighboring empty colors to redistribute excess pixels
-            queue = deque()
-            searched = set()
-            prev = {}
-            end_keys = []
-
-            queue.append(start_key)
-            searched.add(start_key)
-            prev[start_key] = None
-
-            target_count = len(transform_colorspace[start_key]) - 1
-
-            while queue and len(end_keys) < target_count:
-                current_key = queue.popleft()
-
-                if current_key not in transform_colorspace or len(transform_colorspace[current_key]) == 0:
-                    end_keys.append(current_key)
-                    if len(end_keys) >= target_count:
-                        break
-
-                adj_colors = self.get_adjacent_colors_np(current_key, searched, order, color_size)
-                for adj_key in adj_colors:
-                    searched.add(adj_key)
-                    prev[adj_key] = current_key
-                    queue.append(adj_key)
-
-            # Redistribute pixels along BFS paths
-            for end_key in end_keys:
-                if end_key not in prev or prev[end_key] is None:
+            for ch in order:
+                if ch >= n_ch:
                     continue
-                current_key = end_key
-                while prev.get(current_key) is not None:
-                    prev_key = prev[current_key]
-                    if prev_key in transform_colorspace and len(transform_colorspace[prev_key]) > 0:
-                        # Pop first point from source
-                        src = transform_colorspace[prev_key]
-                        point = src[0:1]
-                        transform_colorspace[prev_key] = src[1:]
-                        # Append to destination
-                        if current_key not in transform_colorspace or len(transform_colorspace[current_key]) == 0:
-                            transform_colorspace[current_key] = point
+                for delta in [1, -1]:
+                    shifted_ch = np.clip(current_q[:, :, ch] + delta, 0, cs - 1)
+                    if n_ch >= 3:
+                        if ch == 0:
+                            ap = pop_grid[shifted_ch, q1, q2]
+                        elif ch == 1:
+                            ap = pop_grid[q0, shifted_ch, q2]
                         else:
-                            transform_colorspace[current_key] = np.vstack([transform_colorspace[current_key], point])
-                    current_key = prev_key
+                            ap = pop_grid[q0, q1, shifted_ch]
+                    else:
+                        ap = pop_grid[shifted_ch]
+                    adj_pops.append(ap)
+                    adj_channels.append(ch)
+                    adj_deltas.append(delta)
 
-        # Build output image — vectorized
+            if not adj_pops:
+                break
+
+            # Best direction: least populated adjacent color
+            adj_stack = np.stack(adj_pops, axis=-1)
+            best_dir_idx = adj_stack.argmin(axis=-1)
+            min_adj_pop = np.take_along_axis(
+                adj_stack, best_dir_idx[..., np.newaxis], axis=-1
+            ).squeeze(-1)
+
+            # Move pixels that are: (a) in oversized groups, (b) far from distance origin
+            should_move = (pixel_pop > min_adj_pop + 1) & (norm_dist > dist_threshold)
+
+            if not should_move.any():
+                break
+
+            # Decode best direction per pixel
+            best_ch = np.empty((height, width), dtype=np.int32)
+            best_delta = np.empty((height, width), dtype=np.int32)
+            for di in range(len(adj_pops)):
+                mask = (best_dir_idx == di)
+                best_ch[mask] = adj_channels[di]
+                best_delta[mask] = adj_deltas[di]
+
+            # Apply color shifts
+            new_q = current_q.copy()
+            for ch in range(n_ch):
+                ch_mask = should_move & (best_ch == ch)
+                if ch_mask.any():
+                    new_q[:, :, ch] = np.where(
+                        ch_mask,
+                        np.clip(current_q[:, :, ch] + best_delta, 0, cs - 1),
+                        new_q[:, :, ch]
+                    )
+
+            current_q = new_q
+
+        # Build output
         output = np.zeros_like(image_np)
-        for color, pts in transform_colorspace.items():
-            if len(pts) == 0:
-                continue
-            color_arr = np.array(color, dtype=np.float32) / (color_size - 1)
-            if invert:
-                color_arr = 1.0 - color_arr
-            if isinstance(pts, np.ndarray):
-                xs_out = pts[:, 0].astype(np.int32)
-                ys_out = pts[:, 1].astype(np.int32)
-            else:
-                xs_out = np.array([p[0] for p in pts], dtype=np.int32)
-                ys_out = np.array([p[1] for p in pts], dtype=np.int32)
-            output[ys_out, xs_out, :len(color_arr)] = color_arr
+        output[:, :, :n_ch] = current_q.astype(np.float32) / (cs - 1)
+        if invert:
+            output[:, :, :n_ch] = 1.0 - output[:, :, :n_ch]
 
         return output
 
