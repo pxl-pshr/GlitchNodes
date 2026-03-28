@@ -12,4 +12,4 @@ Repository = "https://github.com/pxl-pshr/GlitchNodes"
 [tool.comfy]
 PublisherId = "pxlpshr"
 DisplayName = "GlitchNodes"
-Icon = ""
+Icon = "https://camo.githubusercontent.com/726817b4baa17ac85ff3e1f18c991444658a275ab28c9e6fb944cdd7f0fd83e7/68747470733a2f2f692e706f7374696d672e63632f634a6d794e5434732f436f6d66792d55492d33343139342e706e67"
