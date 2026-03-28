@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 
 class PixelFloat:
     """Apply gravity effects to pixel blocks with motion estimation."""
-    def __init__(self):
-        self.old_mvs = None
-        self.rt = 0
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -130,23 +127,23 @@ class PixelFloat:
         
         return best_block_size
 
-    def estimate_motion_vectors(self, frame1, frame2, flow_scale, flow_levels, flow_iterations, block_size, auto_block_size):
+    def estimate_motion_vectors(self, frame1, frame2, flow_scale, flow_levels, flow_iterations, block_size, auto_block_size, min_blocks, max_blocks):
         frame1 = self.ensure_rgb(frame1)
         frame2 = self.ensure_rgb(frame2)
-        
+
         # Apply Gaussian blur to reduce noise
         frame1_blur = cv2.GaussianBlur(frame1, (3, 3), 0)
         frame2_blur = cv2.GaussianBlur(frame2, (3, 3), 0)
-        
+
         f1 = cv2.cvtColor(frame1_blur, cv2.COLOR_RGB2GRAY)
         f2 = cv2.cvtColor(frame2_blur, cv2.COLOR_RGB2GRAY)
-        
+
         if f1.shape != f2.shape:
             f2 = cv2.resize(f2, (f1.shape[1], f1.shape[0]))
-        
+
         try:
             flow = cv2.calcOpticalFlowFarneback(
-                f1, f2, 
+                f1, f2,
                 None,
                 pyr_scale=flow_scale,
                 levels=flow_levels,
@@ -158,13 +155,13 @@ class PixelFloat:
             )
         except cv2.error as e:
             raise RuntimeError(f"Optical flow error: {str(e)}\nShapes: f1={f1.shape}, f2={f2.shape}")
-        
+
         if auto_block_size:
             actual_block_size = self.calculate_block_size(
-                frame1.shape[0], 
+                frame1.shape[0],
                 frame1.shape[1],
-                self.min_blocks,
-                self.max_blocks
+                min_blocks,
+                max_blocks
             )
         else:
             h, w = frame1.shape[:2]
@@ -197,17 +194,14 @@ class PixelFloat:
             
         return mvs, actual_block_size
 
-    def apply_anti_gravity(self, mvs, gravity_strength, motion_threshold):
-        if self.rt == 0:
-            self.old_mvs = [[[mv[:] for mv in row] for row in mvs]]
-            self.rt = 1
-            return mvs
-        
-        old_mvs = self.old_mvs[0]
-        
+    def apply_anti_gravity(self, mvs, gravity_strength, motion_threshold, prev_mvs):
+        if prev_mvs is None:
+            return mvs, [[mv[:] for mv in row] for row in mvs]
+
+        old_mvs = prev_mvs
+
         if len(mvs) != len(old_mvs) or len(mvs[0]) != len(old_mvs[0]):
-            self.old_mvs = [[[mv[:] for mv in row] for row in mvs]]
-            return mvs
+            return mvs, [[mv[:] for mv in row] for row in mvs]
         
         # Smooth motion vectors between neighboring blocks
         smoothed_mvs = [[mv[:] for mv in row] for row in mvs]
@@ -233,17 +227,17 @@ class PixelFloat:
             for j in range(len(smoothed_mvs[0])):
                 mv = smoothed_mvs[i][j]
                 omv = old_mvs[i][j]
-                
+
                 if mv[1] < 0:
                     nmv = mv[1]
                     mv[1] = omv[1]
                     omv[1] = nmv + omv[1] - gravity_strength
-                    
+
                     # Dampen extreme motions
                     if abs(mv[1]) > 5 * abs(gravity_strength):
                         mv[1] *= 0.8
-        
-        return smoothed_mvs
+
+        return smoothed_mvs, [[mv[:] for mv in row] for row in smoothed_mvs]
 
     def apply_motion_vectors(self, frame, mvs, block_size, interpolation_factor):
         h, w = frame.shape[:2]
@@ -295,15 +289,10 @@ class PixelFloat:
         batch_size = frames_np.shape[0]
         processed_frames = []
         
-        self.min_blocks = min_blocks
-        self.max_blocks = max_blocks
-
-        # Reset state for new sequence
-        self.old_mvs = None
-        self.rt = 0
-
         # Create progress bar
         pbar = comfy.utils.ProgressBar(max(batch_size - 1, 1))
+
+        prev_mvs = None
 
         try:
             for i in range(batch_size - 1):
@@ -320,9 +309,11 @@ class PixelFloat:
                     flow_levels,
                     flow_iterations,
                     block_size,
-                    auto_block_size
+                    auto_block_size,
+                    min_blocks,
+                    max_blocks
                 )
-                modified_mvs = self.apply_anti_gravity(mvs, gravity_strength, motion_threshold)
+                modified_mvs, prev_mvs = self.apply_anti_gravity(mvs, gravity_strength, motion_threshold, prev_mvs)
                 processed_frame = self.apply_motion_vectors(
                     current_frame,
                     modified_mvs,

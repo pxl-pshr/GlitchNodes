@@ -138,8 +138,8 @@ class OrderedDithering:
                     variation[mask] = 1
                 patterns.append(variation)
         
-        # Normalize patterns
-        return [p / p.max() for p in patterns]
+        # Normalize patterns (guard against all-zero patterns)
+        return [p / p.max() if p.max() > 0 else p for p in patterns]
 
     def convert_to_grayscale(self, image):
         return np.dot(image[..., :3], [0.2989, 0.5870, 0.1140])[..., np.newaxis]

@@ -224,24 +224,20 @@ class DitherMe:
         matrix_size = matrix_type.split('_')[-1]
         if matrix_size not in self.ordered_matrices:
             matrix_size = "4x4"
-        
-        matrix = self.ordered_matrices[matrix_size]
-        matrix = matrix * effect_size
-        
+
+        matrix = self.ordered_matrices[matrix_size] * effect_size
+
         height, width = image.shape[:2]
         if len(image.shape) == 3:
             gray = np.dot(image, [0.299, 0.587, 0.114])
         else:
             gray = image.copy()
-        
-        output = np.zeros_like(gray)
-        
-        for y in range(height):
-            for x in range(width):
-                threshold_value = matrix[y % matrix.shape[0], x % matrix.shape[1]]
-                output[y, x] = 1.0 if gray[y, x] > threshold_value else 0.0
-        
-        return output
+
+        # Tile the matrix to cover the full image
+        mh, mw = matrix.shape
+        tiled = np.tile(matrix, ((height + mh - 1) // mh, (width + mw - 1) // mw))[:height, :width]
+
+        return (gray > tiled).astype(np.float64)
     
     def _apply_color_mapping(self, dithered, color_mode, shadow_color, midtone_color, 
                            highlight_color, shadow_brightness, midtone_brightness, 
@@ -305,11 +301,9 @@ class DitherMe:
         output = np.zeros_like(gray)
         
         if algorithm == "random":
-            # Random dithering
-            for y in range(height):
-                for x in range(width):
-                    random_threshold = random.random() * effect_size
-                    output[y, x] = 1.0 if gray[y, x] > random_threshold else 0.0
+            # Random dithering (vectorized)
+            random_thresholds = np.random.random((height, width)) * effect_size
+            output = (gray > random_thresholds).astype(np.float64)
         
         elif algorithm == "threshold":
             # Simple threshold
@@ -336,105 +330,60 @@ class DitherMe:
                                     output[ny, nx] = 1.0
         
         elif algorithm == "modulation":
-            # Advanced modulation-style dithering with smooth wave patterns
-            for y in range(height):
-                for x in range(width):
-                    # Get local brightness
-                    local_val = gray[y, x]
-                    
-                    # Create smooth wave pattern that responds to image brightness
-                    # Base frequency that creates nice wave patterns
-                    base_freq = 0.15 / effect_size  # Inverse relationship for intuitive control
-                    
-                    # Primary wave - horizontal lines with brightness modulation
-                    # The brightness affects the wave amplitude and frequency
-                    wave_freq = base_freq * (0.5 + local_val * 1.5)
-                    primary_wave = np.sin(y * wave_freq) 
-                    
-                    # Secondary modulation - creates the "bending" effect
-                    # This makes the lines curve based on image content
-                    modulation_strength = local_val * 0.5
-                    x_offset = np.sin(y * base_freq * 0.2) * modulation_strength * 50
-                    modulated_wave = np.sin(y * wave_freq + x * 0.01 + x_offset)
-                    
-                    # Add subtle vertical influence for more organic patterns
-                    vertical_influence = np.sin(x * base_freq * 0.3) * 0.2
-                    
-                    # Combine waves
-                    combined = modulated_wave + vertical_influence
-                    
-                    # Convert to threshold
-                    # The local brightness affects how the threshold is applied
-                    adaptive_threshold = 0.5 + (local_val - 0.5) * 0.3
-                    wave_threshold = (combined > 0) * 0.4 + 0.3
-                    
-                    output[y, x] = 1.0 if local_val > wave_threshold else 0.0
+            # Advanced modulation-style dithering with smooth wave patterns (vectorized)
+            yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+            base_freq = 0.15 / effect_size
+
+            wave_freq = base_freq * (0.5 + gray * 1.5)
+            modulation_strength = gray * 0.5
+            x_offset = np.sin(yy * base_freq * 0.2) * modulation_strength * 50
+            modulated_wave = np.sin(yy * wave_freq + xx * 0.01 + x_offset)
+
+            vertical_influence = np.sin(xx * base_freq * 0.3) * 0.2
+            combined = modulated_wave + vertical_influence
+
+            wave_threshold = (combined > 0).astype(np.float64) * 0.4 + 0.3
+            output = (gray > wave_threshold).astype(np.float64)
         
         elif algorithm == "wave_interference":
-            # Create smooth wave interference patterns
-            # This creates the characteristic flowing line patterns
-            for y in range(height):
-                for x in range(width):
-                    # Sample the local brightness
-                    local_val = gray[y, x]
-                    
-                    # Base settings for smooth waves
-                    line_frequency = 0.1 / effect_size  # Controls line density
-                    
-                    # Create primary wave pattern (horizontal tendency)
-                    # The frequency modulates based on brightness
-                    y_normalized = y / height
-                    primary_freq = line_frequency * (1 + local_val * 2)
-                    
-                    # Add smooth undulation to create the flowing effect
-                    wave_amplitude = 20 * effect_size
-                    x_displacement = np.sin(y * line_frequency * 0.5) * wave_amplitude * local_val
-                    
-                    # Main wave calculation with displacement
-                    main_wave = np.sin(y * primary_freq + x_displacement * 0.01)
-                    
-                    # Add secondary waves for more complex patterns
-                    # These create the interference effect
-                    secondary_wave = np.sin(x * line_frequency * 0.3 + y * 0.01) * local_val * 0.5
-                    
-                    # Combine waves
-                    combined = main_wave + secondary_wave
-                    
-                    # Create smooth threshold based on wave pattern
-                    wave_value = (combined + 1) * 0.5  # Normalize to 0-1
-                    
-                    # Apply dithering with smooth threshold
-                    output[y, x] = 1.0 if local_val > wave_value * 0.6 + 0.2 else 0.0
+            # Create smooth wave interference patterns (vectorized)
+            yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+            line_frequency = 0.1 / effect_size
+
+            primary_freq = line_frequency * (1 + gray * 2)
+            wave_amplitude = 20 * effect_size
+            x_displacement = np.sin(yy * line_frequency * 0.5) * wave_amplitude * gray
+
+            main_wave = np.sin(yy * primary_freq + x_displacement * 0.01)
+            secondary_wave = np.sin(xx * line_frequency * 0.3 + yy * 0.01) * gray * 0.5
+
+            combined = main_wave + secondary_wave
+            wave_value = (combined + 1) * 0.5
+
+            output = (gray > wave_value * 0.6 + 0.2).astype(np.float64)
         
         elif algorithm == "contour_lines":
-            # Create contour-following line patterns
-            # First, calculate gradient magnitude
+            # Create contour-following line patterns (vectorized)
             from scipy import ndimage
             grad_x = ndimage.sobel(gray, axis=1)
             grad_y = ndimage.sobel(gray, axis=0)
             gradient_mag = np.sqrt(grad_x**2 + grad_y**2)
-            
-            for y in range(height):
-                for x in range(width):
-                    # Create lines that follow image contours
-                    local_brightness = gray[y, x]
-                    local_gradient = gradient_mag[y, x]
-                    
-                    # Frequency varies with gradient strength
-                    freq = base_freq = 0.05 * effect_size
-                    if local_gradient > 0.01:
-                        angle = np.arctan2(grad_y[y, x], grad_x[y, x])
-                        # Create lines perpendicular to gradient
-                        line_pattern = np.sin((x * np.sin(angle) - y * np.cos(angle)) * freq * (1 + local_gradient * 20))
-                    else:
-                        # Default to horizontal lines in flat areas
-                        line_pattern = np.sin(y * freq * (1 + local_brightness * 5))
-                    
-                    # Add some wave modulation
-                    modulation = np.sin(x * 0.01 * effect_size) * 0.2
-                    
-                    threshold_val = 0.5 + (line_pattern + modulation) * 0.3
-                    output[y, x] = 1.0 if gray[y, x] > threshold_val else 0.0
+
+            yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+            freq = 0.05 * effect_size
+
+            angle = np.arctan2(grad_y, grad_x)
+            # Lines perpendicular to gradient
+            contour_pattern = np.sin((xx * np.sin(angle) - yy * np.cos(angle)) * freq * (1 + gradient_mag * 20))
+            # Horizontal lines for flat areas
+            flat_pattern = np.sin(yy * freq * (1 + gray * 5))
+            # Blend based on gradient strength
+            has_gradient = gradient_mag > 0.01
+            line_pattern = np.where(has_gradient, contour_pattern, flat_pattern)
+
+            modulation = np.sin(xx * 0.01 * effect_size) * 0.2
+            threshold_val = 0.5 + (line_pattern + modulation) * 0.3
+            output = (gray > threshold_val).astype(np.float64)
         
         elif algorithm == "line_modulation":
             # Creates clean modulated line patterns like in the reference

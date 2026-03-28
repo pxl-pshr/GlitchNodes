@@ -48,11 +48,11 @@ class VHSonAcid:
     CATEGORY = "GlitchNodes"
     DESCRIPTION = "Apply VHS-style glitch effects with slice displacement and RGB channel shifting"
 
-    def create_slice_indices(self, height, slice_size):
+    def create_slice_indices(self, height, slice_size, glitch_probability):
         """Create random slice indices"""
         slices = []
         for i in range(0, height - slice_size, slice_size):
-            if np.random.random() < self.current_params["glitch_probability"]:
+            if np.random.random() < glitch_probability:
                 slices.append((i, i + slice_size))
         return slices
 
@@ -60,59 +60,46 @@ class VHSonAcid:
         """Shift a slice of the image horizontally"""
         offset = np.random.randint(-offset_range, offset_range)
         slice_data = image[start:end].copy()
-        
+
         if offset > 0:
             image[start:end, offset:] = slice_data[:, :-offset]
             image[start:end, :offset] = slice_data[:, -offset:]
         elif offset < 0:
             image[start:end, :offset] = slice_data[:, -offset:]
             image[start:end, offset:] = slice_data[:, :-offset]
-        
+
         return image
 
     def rgb_shift(self, image, amount):
         """Apply RGB channel shifting"""
         result = image.copy()
-        channels = [0, 1, 2]  # RGB channels
-        
-        for i in channels:
+        for i in range(3):
             shift = int(np.random.uniform(-amount * 30, amount * 30))
-            if shift > 0:
+            if shift != 0:
                 result[..., i] = np.roll(image[..., i], shift, axis=1)
-            elif shift < 0:
-                result[..., i] = np.roll(image[..., i], shift, axis=1)
-                
         return result
 
-    def process_single_image(self, image):
+    def process_single_image(self, image, slice_size, offset_range, color_shift, glitch_probability):
         """Process a single image with glitch effects"""
         result = image.copy()
         height, width = image.shape[:2]
-        
+
         # Create random slices
-        slices = self.create_slice_indices(height, self.current_params["slice_size"])
-        
+        slices = self.create_slice_indices(height, slice_size, glitch_probability)
+
         # Apply slice shifts
         for start, end in slices:
-            result = self.shift_slice(result, start, end, self.current_params["offset_range"])
-        
+            result = self.shift_slice(result, start, end, offset_range)
+
         # Apply color shifting
-        if self.current_params["color_shift"] > 0:
-            result = self.rgb_shift(result, self.current_params["color_shift"])
-        
+        if color_shift > 0:
+            result = self.rgb_shift(result, color_shift)
+
         return result
 
     def apply_glitch(self, images, slice_size, offset_range, color_shift, glitch_probability):
         device = images.device
         batch_size, height, width, channels = images.shape
-        
-        # Store parameters for use in other methods
-        self.current_params = {
-            "slice_size": slice_size,
-            "offset_range": offset_range,
-            "color_shift": color_shift,
-            "glitch_probability": glitch_probability
-        }
         
         output_batch = []
 
@@ -121,7 +108,7 @@ class VHSonAcid:
         pbar = comfy.utils.ProgressBar(batch_size)
         for b in range(batch_size):
             img = images[b].cpu().numpy()
-            canvas = self.process_single_image(img)
+            canvas = self.process_single_image(img, slice_size, offset_range, color_shift, glitch_probability)
             canvas_tensor = torch.from_numpy(canvas).float()
             output_batch.append(canvas_tensor)
             pbar.update(1)

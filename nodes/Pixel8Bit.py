@@ -20,6 +20,9 @@ def _hex_to_rgb01(hex_str: str) -> np.ndarray:
     hex_str = hex_str.strip().lstrip('#')
     if len(hex_str) == 3:
         hex_str = ''.join([c*2 for c in hex_str])
+    if len(hex_str) != 6 or not all(c in '0123456789abcdefABCDEF' for c in hex_str):
+        logger.warning(f"Invalid hex color '{hex_str}', defaulting to black")
+        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
     r = int(hex_str[0:2], 16)
     g = int(hex_str[2:4], 16)
     b = int(hex_str[4:6], 16)

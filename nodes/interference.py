@@ -5,7 +5,6 @@ import logging
 import torch
 import torch.nn.functional as F
 import comfy.utils
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +50,13 @@ class Interference:
     CATEGORY = "GlitchNodes"
     DESCRIPTION = "Apply bayer-matrix-inspired pixel sorting with various color effects"
 
-    def apply_sort_shader(self, image, horizontal_iterations, vertical_iterations, 
+    def apply_sort_shader(self, image, horizontal_iterations, vertical_iterations,
                          shift_amount, color_shift, color_mode, preserve_brightness):
-        start_time = time.time()
-        
         image = image.float()
         B, H, W, C = image.shape
 
         def hash(x):
-            return torch.frac(torch.sin(x * 12.9898 + x * 78.233) * 43758.5453)
+            return torch.frac(torch.sin(x * 12.9898 + torch.roll(x, 1, dims=-1) * 78.233) * 43758.5453)
 
         def cv(c):
             return c.sum(dim=-1)
@@ -128,21 +125,15 @@ class Interference:
         pbar = comfy.utils.ProgressBar(total_iterations)
 
         def sort_horizontal(image, iterations):
-            h_start = time.time()
             for i in range(iterations):
                 image = compare(image, torch.roll(image, shifts=shift_amount, dims=2), pos, i)
                 pbar.update(1)
-            h_time = time.time() - h_start
-            logger.info(f"Horizontal sort: {h_time:.3f}s")
             return image
 
         def sort_vertical(image, iterations):
-            v_start = time.time()
             for i in range(iterations):
                 image = compare_h(image, torch.roll(image, shifts=shift_amount, dims=1), pos, i)
                 pbar.update(1)
-            v_time = time.time() - v_start
-            logger.info(f"Vertical sort: {v_time:.3f}s")
             return image
 
         # Apply sorting with progress bars
@@ -150,8 +141,5 @@ class Interference:
             image = sort_horizontal(image, horizontal_iterations)
         if vertical_iterations > 0:
             image = sort_vertical(image, vertical_iterations)
-
-        total_time = time.time() - start_time
-        logger.debug(f"Total time: {total_time:.3f}s")
 
         return (image,)

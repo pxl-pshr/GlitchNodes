@@ -201,12 +201,23 @@ class DataBend:
             device = images.device
             batch_size = images.shape[0]
 
-            params = locals()
-            del params['self']
-            del params['images']
-            del params['device']
-            del params['batch_size']
-            del params['control_after_generate']
+            params = {
+                "slice_direction": slice_direction,
+                "slice_min_size": slice_min_size,
+                "slice_max_size": slice_max_size,
+                "slice_variability": slice_variability,
+                "channel_shift_mode": channel_shift_mode,
+                "color_intensity": color_intensity,
+                "rgb_shift_separate": rgb_shift_separate,
+                "preserve_bright_areas": preserve_bright_areas,
+                "glitch_types": glitch_types,
+                "pattern_frequency": pattern_frequency,
+                "chaos_amount": chaos_amount,
+                "seed": seed,
+                "wave_distortion": wave_distortion,
+                "compression_artifacts": compression_artifacts,
+                "pixel_sorting": pixel_sorting,
+            }
 
             output_batch = []
 

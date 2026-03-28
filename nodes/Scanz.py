@@ -135,20 +135,13 @@ class Scanz:
     def apply_wave_distortion(self, image: np.ndarray, amplitude: float, frequency: float, speed: float) -> np.ndarray:
         if amplitude == 0:
             return image
-            
+
         height, width = image.shape[:2]
-        result = np.zeros_like(image)
-        
         x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height))
         wave = amplitude * 50 * np.sin(2 * np.pi * (frequency * y_coords / height + speed * x_coords / width))
-        
-        for y in range(height):
-            for x in range(width):
-                offset = int(wave[y, x])
-                new_x = min(max(x + offset, 0), width - 1)
-                result[y, x] = image[y, new_x]
-                
-        return result
+
+        src_x = np.clip((x_coords + wave.astype(np.intp)), 0, width - 1).astype(np.intp)
+        return image[y_coords, src_x]
 
     def apply_scan_lines(self, image: np.ndarray, intensity: float, drift: float, curve: float) -> np.ndarray:
         if intensity == 0:
@@ -239,42 +232,34 @@ class Scanz:
     def apply_color_drift(self, image: np.ndarray, amount: float) -> np.ndarray:
         if amount == 0:
             return image
-            
+
         height, width = image.shape[:2]
-        result = np.zeros_like(image)
-        
-        y_coords = np.linspace(0, height-1, height)
-        drift_pattern = np.sin(y_coords * 0.1) * amount * 10
-        
-        for y in range(height):
-            drift = int(drift_pattern[y])
-            for c in range(3):
-                shift = drift * (c - 1)
-                rolled = np.roll(image[y, :, c], shift)
-                result[y, :, c] = rolled
-                
+        result = image.copy()
+
+        y_coords = np.linspace(0, height - 1, height)
+        drift_pattern = (np.sin(y_coords * 0.1) * amount * 10).astype(np.intp)
+
+        for c in range(3):
+            shift_per_row = drift_pattern * (c - 1)
+            for y in range(height):
+                s = shift_per_row[y]
+                if s != 0:
+                    result[y, :, c] = np.roll(image[y, :, c], s)
+
         return result
     def apply_edge_stretch(self, image: np.ndarray, amount: float) -> np.ndarray:
         if amount == 0:
             return image
-            
+
         gray = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 50, 150).astype(np.float32) / 255.0
-        
+
         height, width = image.shape[:2]
         displacement = cv2.GaussianBlur(edges, (21, 21), 5) * amount * 20
-        
-        result = np.zeros_like(image)
-        for y in range(height):
-            for x in range(width):
-                offset = int(displacement[y, x])
-                if offset > 0:
-                    new_x = min(x + offset, width - 1)
-                    result[y, x] = image[y, new_x]
-                else:
-                    result[y, x] = image[y, x]
-                    
-        return result
+
+        x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height))
+        src_x = np.clip(x_coords + displacement.astype(np.intp), 0, width - 1).astype(np.intp)
+        return image[y_coords, src_x]
 
     def apply_static_noise(self, image: np.ndarray, amount: float) -> np.ndarray:
         if amount == 0:
