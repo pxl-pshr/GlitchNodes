@@ -32,7 +32,7 @@ class Corruptor:
     """
     
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE", ),
@@ -117,8 +117,7 @@ class Corruptor:
                     wavelet_threshold, noise_distribution
                 ).unsqueeze(0)
             
-            if result.shape[1] == 3:
-                result = result.permute(0, 2, 3, 1)
+            result = result.permute(0, 2, 3, 1)
             
             return (result,)
         except Exception as e:

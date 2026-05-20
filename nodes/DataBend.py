@@ -53,55 +53,58 @@ class DataBend:
 
     def create_slices(self, height, width, params):
         """Create slice indices based on direction and size parameters"""
+        rng = params["_rng"]
         slices = []
         if params["slice_direction"] in ["horizontal", "both"]:
-            size = np.random.randint(params["slice_min_size"], params["slice_max_size"] + 1)
+            size = rng.integers(params["slice_min_size"], params["slice_max_size"] + 1)
             for i in range(0, height - size, size):
-                if np.random.random() < params["slice_variability"]:
+                if rng.random() < params["slice_variability"]:
                     slices.append(("h", i, i + size))
-                    
+
         if params["slice_direction"] in ["vertical", "both"]:
-            size = np.random.randint(params["slice_min_size"], params["slice_max_size"] + 1)
+            size = rng.integers(params["slice_min_size"], params["slice_max_size"] + 1)
             for i in range(0, width - size, size):
-                if np.random.random() < params["slice_variability"]:
+                if rng.random() < params["slice_variability"]:
                     slices.append(("v", i, i + size))
-                    
+
         return slices
 
     def apply_color_shift(self, image, params):
         """Apply color channel manipulation based on mode"""
+        rng = params["_rng"]
         result = image.copy()
-        
+
         if params["channel_shift_mode"] == "rgb_split":
             for c in range(3):
-                if params["rgb_shift_separate"] or np.random.random() < 0.5:
+                if params["rgb_shift_separate"] or rng.random() < 0.5:
                     shift = int(params["color_intensity"] * 20)
                     result[..., c] = np.roll(image[..., c], shift, axis=1)
-                    
+
         elif params["channel_shift_mode"] == "hue_shift":
             hsv = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
             hsv[..., 0] = (hsv[..., 0] + int(params["color_intensity"] * 180)) % 180
             result = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB).astype(np.float32) / 255
-            
+
         else:  # random
-            shifts = np.random.randint(-int(params["color_intensity"] * 30),
-                                     int(params["color_intensity"] * 30), 3)
+            half = int(params["color_intensity"] * 30)
+            shifts = rng.integers(-half, half, size=3) if half > 0 else np.zeros(3, dtype=int)
             for c in range(3):
                 result[..., c] = np.roll(image[..., c], shifts[c], axis=1)
-                
+
         return result
 
     def apply_glitch_patterns(self, image, params):
         """Apply various glitch patterns based on type"""
+        rng = params["_rng"]
         result = image.copy()
         height, width = image.shape[:2]
-        
+
         for _ in range(params["pattern_frequency"]):
             if params["glitch_types"] == "all":
-                effect = np.random.choice(["shift", "repeat", "mirror", "noise"])
+                effect = rng.choice(["shift", "repeat", "mirror", "noise"])
             else:
                 effect = params["glitch_types"]
-                
+
             if effect == "shift":
                 slices = self.create_slices(height, width, params)
                 for direction, start, end in slices:
@@ -110,31 +113,31 @@ class DataBend:
                         result[start:end] = np.roll(result[start:end], offset, axis=1)
                     else:
                         result[:, start:end] = np.roll(result[:, start:end], offset, axis=0)
-                        
+
             elif effect == "repeat":
-                slice_size = np.random.randint(2, 10)
-                if np.random.random() < 0.5:
-                    y = np.random.randint(0, height - slice_size)
+                slice_size = int(rng.integers(2, 10))
+                if height > slice_size and rng.random() < 0.5:
+                    y = int(rng.integers(0, height - slice_size))
                     result[y:y+slice_size] = np.tile(result[y:y+1], (slice_size, 1, 1))
-                else:
-                    x = np.random.randint(0, width - slice_size)
+                elif width > slice_size:
+                    x = int(rng.integers(0, width - slice_size))
                     result[:, x:x+slice_size] = np.tile(result[:, x:x+1], (1, slice_size, 1))
-                    
+
             elif effect == "mirror":
-                if np.random.random() < 0.5:
-                    y = np.random.randint(0, height//2)
-                    size = np.random.randint(10, 50)
+                if rng.random() < 0.5 and height > 2:
+                    y = int(rng.integers(0, height // 2))
+                    size = int(rng.integers(10, min(50, height - y)))
                     result[y:y+size] = np.flip(result[y:y+size], axis=1)
-                else:
-                    x = np.random.randint(0, width//2)
-                    size = np.random.randint(10, 50)
+                elif width > 2:
+                    x = int(rng.integers(0, width // 2))
+                    size = int(rng.integers(10, min(50, width - x)))
                     result[:, x:x+size] = np.flip(result[:, x:x+size], axis=0)
-                    
+
             elif effect == "noise":
-                noise_mask = np.random.random(image.shape[:2]) < params["chaos_amount"] * 0.1
-                noise = np.random.random((noise_mask.sum(), 3))
+                noise_mask = rng.random(image.shape[:2]) < params["chaos_amount"] * 0.1
+                noise = rng.random((noise_mask.sum(), 3))
                 result[noise_mask] = noise
-                
+
         return result
 
     def apply_distortions(self, image, params):
@@ -195,9 +198,6 @@ class DataBend:
                          pattern_frequency, chaos_amount, seed, wave_distortion,
                          compression_artifacts, pixel_sorting, control_after_generate):
         try:
-            if seed != -1:
-                np.random.seed(seed)
-
             device = images.device
             batch_size = images.shape[0]
 
@@ -217,6 +217,7 @@ class DataBend:
                 "wave_distortion": wave_distortion,
                 "compression_artifacts": compression_artifacts,
                 "pixel_sorting": pixel_sorting,
+                "_rng": np.random.default_rng(seed if seed != -1 else None),
             }
 
             output_batch = []

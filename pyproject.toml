@@ -12,5 +12,5 @@ Repository = "https://github.com/pxl-pshr/GlitchNodes"
 [tool.comfy]
 PublisherId = "pxlpshr"
 DisplayName = "GlitchNodes"
-Icon = "
+Icon = ""
 Banner = "https://raw.githubusercontent.com/pxl-pshr/GlitchNodes/refs/heads/main/examples/banner.png"

@@ -82,24 +82,17 @@ class GlitchIT:
                             break
 
                 glitched_jpeg = original[:start] + data + original[end:]
-                glitched_image = np.array(Image.open(io.BytesIO(glitched_jpeg)))
+                glitched_image = np.array(Image.open(io.BytesIO(glitched_jpeg)))  # (H,W,C)
 
                 if np_image.shape == (1, 1, 576):
                     glitched_image = glitched_image.mean(axis=2, keepdims=True).reshape(1, 1, 576)
                 elif np_image.shape[0] == 1:
                     glitched_image = glitched_image.mean(axis=2, keepdims=True)
-                else:
-                    glitched_image = glitched_image.transpose(2, 0, 1)
 
                 glitched_images.append(glitched_image)
                 pbar.update(1)
 
-            result = torch.from_numpy(np.stack(glitched_images).astype(np.float32) / 255.0)
-
-            if original_shape != result.shape:
-                result = result.permute(0, 2, 3, 1)
-
-            return (result,)
+            return (torch.from_numpy(np.stack(glitched_images).astype(np.float32) / 255.0),)
         except Exception as e:
             logger.error(f"Error in GlitchIT processing: {str(e)}")
             raise

@@ -293,9 +293,11 @@ class PixelFloat:
         pbar = comfy.utils.ProgressBar(max(batch_size - 1, 1))
 
         prev_mvs = None
+        frame_idx = 'unknown'
 
         try:
             for i in range(batch_size - 1):
+                frame_idx = i
                 current_frame = frames_np[i].copy()
                 next_frame = frames_np[i+1].copy()
 
@@ -327,7 +329,6 @@ class PixelFloat:
                 pbar.update(1)
 
         except Exception as e:
-            frame_idx = i if 'i' in dir() else 'unknown'
             logger.error(f"Error processing frame {frame_idx}: {str(e)}")
             raise RuntimeError(f"Error processing frame {frame_idx}: {str(e)}")
         

@@ -3,12 +3,9 @@
 
 import logging
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 import cv2
 import comfy.utils
-from typing import Tuple, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -239,12 +236,11 @@ class Scanz:
         y_coords = np.linspace(0, height - 1, height)
         drift_pattern = (np.sin(y_coords * 0.1) * amount * 10).astype(np.intp)
 
+        row_idx = np.arange(height)[:, np.newaxis]
         for c in range(3):
-            shift_per_row = drift_pattern * (c - 1)
-            for y in range(height):
-                s = shift_per_row[y]
-                if s != 0:
-                    result[y, :, c] = np.roll(image[y, :, c], s)
+            shifts = drift_pattern * (c - 1)
+            col_idx = (np.arange(width)[np.newaxis, :] - shifts[:, np.newaxis]) % width
+            result[:, :, c] = image[row_idx, col_idx, c]
 
         return result
     def apply_edge_stretch(self, image: np.ndarray, amount: float) -> np.ndarray:
@@ -291,11 +287,15 @@ class Scanz:
         return result
 
     def apply_compression_artifacts(self, image: np.ndarray, quality: int = 50) -> np.ndarray:
-        temp_img = (image * 255).astype(np.uint8)
+        temp_img = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-        result, encoded = cv2.imencode('.jpg', temp_img, encode_param)
+        success, encoded = cv2.imencode('.jpg', temp_img, encode_param)
+        if not success or encoded is None:
+            return image
         decoded = cv2.imdecode(encoded, 1)
-        return decoded.astype(np.float32) / 255.0
+        if decoded is None:
+            return image
+        return cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
     def process_single_image(self, image: np.ndarray, params: dict) -> np.ndarray:
         image = self.normalize_image(image)

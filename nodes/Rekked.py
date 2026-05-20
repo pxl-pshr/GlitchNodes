@@ -10,28 +10,18 @@ logger = logging.getLogger(__name__)
 
 class Rekked:
     """Applies various datamosh-inspired glitch effects with multiple artistic modes."""
+    MODES = ["blurbobb", "fatcat", "vaporwave", "castles", "chimera", "gazette",
+             "manticore95", "schifty", "vana", "veneneux", "void", "walter"]
+
     def __init__(self):
-        self.modes = {
-            "blurbobb": self.blurbobb,
-            "fatcat": self.fatcat,
-            "vaporwave": self.vaporwave,
-            "castles": self.castles,
-            "chimera": self.chimera,
-            "gazette": self.gazette,
-            "manticore95": self.manticore95,
-            "schifty": self.schifty,
-            "vana": self.vana,
-            "veneneux": self.veneneux,
-            "void": self.void,
-            "walter": self.walter
-        }
+        self.modes = {name: getattr(self, name) for name in self.MODES}
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
-                "mode": (list(cls().modes.keys()),)
+                "mode": (cls.MODES,)
             }
         }
 
@@ -121,16 +111,9 @@ class Rekked:
     def chimera(self, data, width, height):
         noise_threshold = 0.2
         grain_threshold = 0.4
-        chimera_weight = [0.25, 0.5]
 
-        # Chimera effect
-        for y in range(height):
-            for x in range(width):
-                index = (y * width + x)
-                r, g, b = data[index, :3]
-                data[index, 0] = r + g * chimera_weight[1] + b * chimera_weight[0]
-                data[index, 1] = r * chimera_weight[1] + g + b * chimera_weight[0]
-                data[index, 2] = r * chimera_weight[0] + g * chimera_weight[1] + b
+        mix = np.array([[1, 0.5, 0.25], [0.5, 1, 0.25], [0.25, 0.5, 1]], dtype=np.float32)
+        data[:, :3] = data[:, :3] @ mix
 
         # Add noise, darken, and add grain
         noise = np.random.random(data.shape) < noise_threshold
@@ -279,7 +262,7 @@ class Rekked:
                 seed_change = int(np.random.random() * height / 4)
             
             data[i:i+width, 0] = (data[i:i+width, 0] * seed[0] + seed[2]) % 1.0
-            data[i:i+width, 1] = (data[i:i+width, 1] * seed[1] + seed[1]) % 1.0
+            data[i:i+width, 1] = (data[i:i+width, 1] * seed[1] + seed[0]) % 1.0
             data[i:i+width, 2] = (data[i:i+width, 2] * seed[2] + seed[0]) % 1.0
             if data.shape[1] == 4:
                 data[i:i+width, 3] = np.random.random(width)

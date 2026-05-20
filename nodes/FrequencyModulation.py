@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class FrequencyModulation:
     """Applies frequency modulation effects to create glitchy visual artifacts."""
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),

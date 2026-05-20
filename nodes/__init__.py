@@ -1,3 +1,4 @@
+import os
 from .ascii import ASCII
 from .Corruptor import Corruptor
 from .DataBend import DataBend
@@ -96,4 +97,5 @@ $R@i.~~ !     :   ~$$$$$B$$en:``
 ▒█░░░ ▄▀▒▀▄ ▒█▄▄█ ▒█░░░ ▒█▄▄▄█ ▒█░▒█ ▒█░▒█
 ~~~~~~~~~ G L I T C H N O D E S ~~~~~~~~~
 """
-print_red(ascii_art)
+if os.environ.get("GLITCHNODES_BANNER", "1") != "0":
+    print_red(ascii_art)

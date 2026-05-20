@@ -10,23 +10,6 @@ import comfy.utils
 logger = logging.getLogger(__name__)
 
 
-def _iir_lowpass_1d(signal, alpha):
-    """First-order IIR lowpass: y[n] = alpha*x[n] + (1-alpha)*y[n-1].
-
-    Uses vectorized numpy approach — processes entire 1D signal at once
-    by leveraging the geometric series expansion of the IIR filter.
-    For short filter memory (alpha not too small), this is accurate and fast.
-    """
-    out = np.empty_like(signal)
-    if len(signal) == 0:
-        return out
-    out[0] = signal[0] * alpha
-    beta = 1.0 - alpha
-    for i in range(1, len(signal)):
-        out[i] = alpha * signal[i] + beta * out[i - 1]
-    return out
-
-
 def _iir_lowpass_rows(arr, alpha, delay=0, passes=1):
     """Apply first-order IIR lowpass per row with optional delay shift.
 
@@ -75,7 +58,7 @@ def _iir_noise_signal(deltas):
 class TvGlitch:
     """Applies analog TV glitch effects with color distortion and scanlines."""
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
