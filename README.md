@@ -234,7 +234,7 @@ Advanced glitch art node that combines multiple effects including slice manipula
 | glitch_types | Type of glitch effect: "shift", "repeat", "mirror", "noise", or "all". Default: all |
 | pattern_frequency | Number of glitch patterns to apply (1-10). Default: 3 |
 | chaos_amount | Intensity of glitch patterns (0-1). Default: 0.5 |
-| seed | Random seed for reproducible results. -1 for random. Default: -1 |
+| seed | Random seed for reproducible results. Default: 0 |
 
 #### Distortion Controls
 | Parameter | Description |
@@ -242,11 +242,6 @@ Advanced glitch art node that combines multiple effects including slice manipula
 | wave_distortion | Applies wave-like distortion effect (0-1). Default: 0.0 |
 | compression_artifacts | Simulates compression artifacts (0-1). Default: 0.0 |
 | pixel_sorting | Applies pixel sorting effect (0-1). Default: 0.0 |
-
-#### Additional Controls
-| Parameter | Description |
-|-----------|-------------|
-| control_after_generate | Post-processing control: "randomize" or "none". Default: none |
 
 </details>
 
@@ -629,7 +624,7 @@ A node that creates unique visual effects by redistributing pixels based on vari
 #### Color Controls
 | Parameter | Description |
 |-----------|-------------|
-| color_size | Number of color levels per channel (2-256). Higher values create smoother gradients. Default: 64 |
+| color_size | Number of color levels per channel (2-128). Higher values create smoother gradients. Default: 64 |
 | order | Channel processing order as comma-separated RGB indices (e.g., "0,1,2"). Default: "0,1,2" |
 | invert | When enabled, inverts the color output. Default: False |
 

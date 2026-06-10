@@ -12,7 +12,7 @@ class OrderedDithering:
     """Applies ordered dithering with multiple pattern types and optional animation."""
     DITHER_TYPES = ["Standard", "Artistic", "Animated"]
     COLOR_MODES = ["Color", "Grayscale"]
-    
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -58,9 +58,12 @@ class OrderedDithering:
                     "step": 0.1
                 }),
                 "invert": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             }
         }
-    
+
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "apply_dithering"
@@ -69,14 +72,14 @@ class OrderedDithering:
 
     def __init__(self):
         self.bayer_matrices = {
-            "2x2": np.array([[0, 2], 
+            "2x2": np.array([[0, 2],
                             [3, 1]]) / 4.0,
-            
+
             "4x4": np.array([[0, 8, 2, 10],
                             [12, 4, 14, 6],
                             [3, 11, 1, 9],
                             [15, 7, 13, 5]]) / 16.0,
-            
+
             "8x8": np.array([[0, 32, 8, 40, 2, 34, 10, 42],
                             [48, 16, 56, 24, 50, 18, 58, 26],
                             [12, 44, 4, 36, 14, 46, 6, 38],
@@ -86,14 +89,10 @@ class OrderedDithering:
                             [15, 47, 7, 39, 13, 45, 5, 37],
                             [63, 31, 55, 23, 61, 29, 53, 21]]) / 64.0
         }
-        
-        # Generate 16 artistic patterns for different brightness levels
-        self.artistic_patterns = self._generate_artistic_patterns()
 
-    def _generate_artistic_patterns(self):
+    def _generate_artistic_patterns(self, rng):
         patterns = []
-        base_size = 4  # 4x4 patterns
-        
+
         # Pattern 1: Dots
         p1 = np.array([
             [1, 0, 1, 0],
@@ -101,7 +100,7 @@ class OrderedDithering:
             [1, 0, 1, 0],
             [0, 1, 0, 1]
         ])
-        
+
         # Pattern 2: Lines horizontal
         p2 = np.array([
             [1, 1, 1, 1],
@@ -109,7 +108,7 @@ class OrderedDithering:
             [1, 1, 1, 1],
             [0, 0, 0, 0]
         ])
-        
+
         # Pattern 3: Lines vertical
         p3 = np.array([
             [1, 0, 1, 0],
@@ -117,7 +116,7 @@ class OrderedDithering:
             [1, 0, 1, 0],
             [1, 0, 1, 0]
         ])
-        
+
         # Pattern 4: Diagonal
         p4 = np.array([
             [1, 0, 0, 0],
@@ -125,7 +124,7 @@ class OrderedDithering:
             [0, 0, 1, 0],
             [0, 0, 0, 1]
         ])
-        
+
         # Generate variations with different densities
         base_patterns = [p1, p2, p3, p4]
         for p in base_patterns:
@@ -134,148 +133,146 @@ class OrderedDithering:
                 variation = p.copy()
                 if i > 0:
                     # Add more dots for higher brightness
-                    mask = np.random.rand(*variation.shape) < (i * 0.25)
+                    mask = rng.random(variation.shape) < (i * 0.25)
                     variation[mask] = 1
                 patterns.append(variation)
-        
+
         # Normalize patterns (guard against all-zero patterns)
         return [p / p.max() if p.max() > 0 else p for p in patterns]
 
     def convert_to_grayscale(self, image):
         return np.dot(image[..., :3], [0.2989, 0.5870, 0.1140])[..., np.newaxis]
 
-    def get_artistic_pattern(self, brightness_level, pattern_contrast):
-        # Map brightness to pattern index
-        pattern_idx = int(brightness_level * (len(self.artistic_patterns) - 1))
-        pattern = self.artistic_patterns[pattern_idx]
-        
-        # Apply contrast adjustment
-        pattern = np.clip(pattern * pattern_contrast, 0, 1)
-        return pattern
+    def _build_bayer_pattern(self, pattern_size, scale, height, width):
+        matrix = self.bayer_matrices.get(pattern_size, self.bayer_matrices["4x4"])
+        scaled = np.repeat(np.repeat(matrix, scale, axis=0), scale, axis=1)
+        sh, sw = scaled.shape
+        return np.tile(scaled, ((height + sh - 1) // sh,
+                                (width + sw - 1) // sw))[:height, :width]
 
-    def process_single_frame(self, image, pattern_type, num_colors, color_mode, 
-                           pattern_contrast=1.0, threshold_offset=0.0, scale=1, invert=False):
-        height, width = image.shape[:2]
-        
-        # Invert colors if requested
+    def _build_artistic_pattern(self, image, scale, pattern_contrast, patterns):
+        # Select a pattern per block based on local brightness
+        gray = np.dot(image[..., :3], [0.2989, 0.5870, 0.1140])
+        height, width = gray.shape
+        cell = 4 * scale
+        blocks_y = (height + cell - 1) // cell
+        blocks_x = (width + cell - 1) // cell
+
+        padded = np.pad(gray, ((0, blocks_y * cell - height), (0, blocks_x * cell - width)), mode='edge')
+        means = padded.reshape(blocks_y, cell, blocks_x, cell).mean(axis=(1, 3))
+
+        idx = np.clip((means * (len(patterns) - 1)).astype(int), 0, len(patterns) - 1)
+        stacked = np.stack(patterns).astype(np.float64)
+        stacked = np.repeat(np.repeat(stacked, scale, axis=1), scale, axis=2)
+
+        full = stacked[idx]  # (blocks_y, blocks_x, cell, cell)
+        full = full.transpose(0, 2, 1, 3).reshape(blocks_y * cell, blocks_x * cell)[:height, :width]
+        return np.clip(full * pattern_contrast, 0.0, 1.0)
+
+    def process_single_frame(self, image, pattern, num_colors, color_mode, invert=False):
+        # Invert colors if requested (image only, identical in all modes)
         if invert:
             image = 1.0 - image
-        
+
         if color_mode == "Grayscale":
             image = self.convert_to_grayscale(image)
-            
-        # Get base pattern
-        if pattern_type in self.bayer_matrices:
-            matrix = self.bayer_matrices[pattern_type]
-            matrix_size = matrix.shape[0]
-            
-            # Scale up the base pattern
-            scaled_pattern = np.repeat(np.repeat(matrix, scale, axis=0), scale, axis=1)
-            scaled_size = matrix_size * scale
-            
-            # Create full-size pattern
-            pattern = np.tile(scaled_pattern, 
-                            ((height + scaled_size - 1) // scaled_size,
-                             (width + scaled_size - 1) // scaled_size))[:height, :width]
-                             
-            # Add threshold offset for animation
-            if threshold_offset != 0:
-                y_coords, x_coords = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
-                offset_matrix = (threshold_offset + (y_coords + x_coords) / (height + width)) % 1.0
-                pattern = (pattern + offset_matrix) % 1.0
-            
-            # Handle color channels
-            if len(image.shape) > 2:
-                pattern = pattern[..., np.newaxis]
-            
-            # Apply dithering
-            levels = np.linspace(0, 1, num_colors)
-            dithered = image + (pattern * (1.0 / num_colors))
-            quantized = np.clip(np.digitize(dithered, bins=levels) - 1, 0, num_colors - 1)
-            result = levels[quantized]
 
-        else:  # Artistic mode
-            matrix = self.bayer_matrices["4x4"]
-            pattern = np.tile(matrix, 
-                            ((height + 3) // 4,
-                             (width + 3) // 4))[:height, :width]
-            
-            # Add animation offset if needed
-            if threshold_offset != 0:
-                y_coords, x_coords = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
-                offset_matrix = (threshold_offset + (y_coords + x_coords) / (height + width)) % 1.0
-                pattern = (pattern + offset_matrix) % 1.0
-                
-            # Invert pattern if requested
-            if invert:
-                pattern = 1.0 - pattern
-            
-            # Handle color channels
-            if len(image.shape) > 2:
-                pattern = pattern[..., np.newaxis]
-            
-            # Apply artistic dithering
-            levels = np.linspace(0, 1, num_colors)
-            dithered = image + (pattern * pattern_contrast * (1.0 / num_colors))
-            quantized = np.clip(np.digitize(dithered, bins=levels) - 1, 0, num_colors - 1)
-            result = levels[quantized]
+        # Centered dither scaled to level spacing, round to nearest level
+        steps = max(1, num_colors - 1)
+        dithered = image + (pattern[..., np.newaxis] - 0.5) / steps
+        result = np.round(np.clip(dithered, 0.0, 1.0) * steps) / steps
 
-        if color_mode == "Grayscale" and len(result.shape) == 2:
-            result = np.repeat(result[..., np.newaxis], 3, axis=2)
-            
+        if color_mode == "Grayscale":
+            result = np.repeat(result, 3, axis=2)
+
         return result
 
     def apply_dithering(self, images, dither_type, color_mode, num_colors, pattern_size,
-                       scale, pattern_contrast, frames, speed, wave_speed, invert):
+                       scale, pattern_contrast, frames, speed, wave_speed, invert, seed=0):
         device = images.device
-        images_np = images.cpu().numpy()
-        
-        pattern_type = pattern_size if dither_type != "Artistic" else "artistic"
-        
-        logger.info(f"\n{'='*50}")
-        logger.info(f"Starting Ordered Dithering:")
-        logger.info(f"Mode: {dither_type}")
-        logger.info(f"Color Mode: {color_mode}")
-        logger.info(f"Pattern: {pattern_type}")
-        logger.info(f"Colors: {num_colors}")
-        logger.info(f"{'='*50}\n")
-        
+        images_np = images.cpu().numpy().astype(np.float64)
+        B, H, W, C = images_np.shape
+
+        # Split channels: process RGB, pass alpha through unchanged
+        alpha = images_np[..., 3:4] if C == 4 else None
+        if C == 1:
+            rgb = np.repeat(images_np, 3, axis=-1)
+        else:
+            rgb = images_np[..., :3]
+
+        logger.debug(f"Starting Ordered Dithering: mode={dither_type}, color_mode={color_mode}, "
+                     f"pattern={pattern_size}, colors={num_colors}")
+
+        rng = np.random.default_rng(seed)
+        artistic_patterns = self._generate_artistic_patterns(rng) if dither_type == "Artistic" else None
+
+        # Hoist the static parts of the pattern out of the frame loop
+        base_pattern = None
+        if dither_type != "Artistic":
+            base_pattern = self._build_bayer_pattern(pattern_size, scale, H, W)
+        offset_grid = None
+
+        def frame_pattern(frame, threshold_offset=0.0):
+            nonlocal offset_grid
+            if dither_type == "Artistic":
+                src = 1.0 - frame if invert else frame
+                pattern = self._build_artistic_pattern(src, scale, pattern_contrast, artistic_patterns)
+            else:
+                pattern = base_pattern
+            if threshold_offset != 0:
+                if offset_grid is None:
+                    y_coords, x_coords = np.meshgrid(np.arange(H), np.arange(W), indexing='ij')
+                    offset_grid = (y_coords + x_coords) / (H + W)
+                pattern = (pattern + (threshold_offset + offset_grid) % 1.0) % 1.0
+            return pattern
+
         try:
             if dither_type == "Standard" or dither_type == "Artistic":
-                result = np.zeros_like(images_np)
-                for b in range(len(images_np)):
+                result = np.zeros_like(rgb)
+                pbar = comfy.utils.ProgressBar(B)
+                for b in range(B):
                     result[b] = self.process_single_frame(
-                        images_np[b], pattern_type, num_colors, color_mode,
-                        pattern_contrast, scale=scale, invert=invert
+                        rgb[b], frame_pattern(rgb[b]), num_colors, color_mode, invert=invert
                     )
-                output = torch.from_numpy(result).to(device)
-                
+                    pbar.update(1)
+                if alpha is not None:
+                    result = np.concatenate([result, alpha], axis=-1)
+
             else:  # Animated dithering
-                # Use first image from batch as the source for animation frames
-                source_image = images_np[0]
-                output = torch.zeros((frames,) + images_np.shape[1:], device=device)
-                pbar = comfy.utils.ProgressBar(frames)
+                if B > 1:
+                    # Animate across the input batch: cycle the wave phase over frames
+                    total = B
+                    sources = rgb
+                    out_alpha = alpha
+                else:
+                    # Single image: generate the requested number of frames from it
+                    total = frames
+                    sources = np.broadcast_to(rgb[0], (frames,) + rgb[0].shape)
+                    out_alpha = np.repeat(alpha, frames, axis=0) if alpha is not None else None
 
-                with torch.no_grad():
-                    for frame in range(frames):
-                        cycle_progress = (frame / frames)
-                        cycle_phase = cycle_progress * 2 * np.pi
-                        wave_offset = -(cycle_phase * wave_speed)
+                result = np.zeros((total, H, W, 3), dtype=np.float64)
+                pbar = comfy.utils.ProgressBar(total)
 
-                        # Normalize to 0-1 range for our dithering
-                        pattern_offset = ((wave_offset / (2 * np.pi)) + speed) % 1.0
+                for frame in range(total):
+                    cycle_progress = (frame / total)
+                    cycle_phase = cycle_progress * 2 * np.pi
+                    wave_offset = -(cycle_phase * wave_speed)
 
-                        frame_result = self.process_single_frame(
-                            source_image, pattern_type, num_colors, color_mode,
-                            pattern_contrast, threshold_offset=pattern_offset, scale=scale, invert=invert
-                        )
-                        output[frame] = torch.from_numpy(frame_result).to(device)
-                        pbar.update(1)
-            
-            logger.info(f"\n{'='*50}")
-            logger.info(f"Dithering complete!")
-            logger.info(f"Output shape: {output.shape}")
-            logger.info(f"{'='*50}")
+                    # Normalize to 0-1 range for our dithering
+                    pattern_offset = ((wave_offset / (2 * np.pi)) + speed) % 1.0
+
+                    result[frame] = self.process_single_frame(
+                        sources[frame], frame_pattern(sources[frame], pattern_offset),
+                        num_colors, color_mode, invert=invert
+                    )
+                    pbar.update(1)
+
+                if out_alpha is not None:
+                    result = np.concatenate([result, out_alpha], axis=-1)
+
+            output = torch.from_numpy(result).float().clamp(0.0, 1.0).to(device)
+
+            logger.debug(f"Dithering complete, output shape: {tuple(output.shape)}")
 
             return (output,)
 

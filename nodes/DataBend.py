@@ -22,26 +22,23 @@ class DataBend:
                 "slice_min_size": ("INT", {"default": 5, "min": 1, "max": 50, "step": 1}),
                 "slice_max_size": ("INT", {"default": 40, "min": 5, "max": 200, "step": 5}),
                 "slice_variability": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
-                
+
                 # Color Manipulation
                 "channel_shift_mode": (["random", "rgb_split", "hue_shift"], {"default": "random"}),
                 "color_intensity": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "rgb_shift_separate": ("BOOLEAN", {"default": False}),
                 "preserve_bright_areas": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
-                
+
                 # Glitch Pattern Controls
                 "glitch_types": (["shift", "repeat", "mirror", "noise", "all"], {"default": "all"}),
                 "pattern_frequency": ("INT", {"default": 3, "min": 1, "max": 10, "step": 1}),
                 "chaos_amount": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "seed": ("INT", {"default": -1, "min": -1, "max": 99999, "step": 1}),
-                
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+
                 # Distortion Controls
                 "wave_distortion": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "compression_artifacts": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "pixel_sorting": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
-                
-                # Control Parameter
-                "control_after_generate": (["randomize", "none"], {"default": "none"}),
             }
         }
 
@@ -75,14 +72,17 @@ class DataBend:
         result = image.copy()
 
         if params["channel_shift_mode"] == "rgb_split":
+            shift = int(params["color_intensity"] * 20)
             for c in range(3):
-                if params["rgb_shift_separate"] or rng.random() < 0.5:
-                    shift = int(params["color_intensity"] * 20)
+                if params["rgb_shift_separate"]:
+                    result[..., c] = np.roll(image[..., c], shift * (c - 1), axis=1)
+                elif rng.random() < 0.5:
                     result[..., c] = np.roll(image[..., c], shift, axis=1)
 
         elif params["channel_shift_mode"] == "hue_shift":
             hsv = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
-            hsv[..., 0] = (hsv[..., 0] + int(params["color_intensity"] * 180)) % 180
+            hue = (hsv[..., 0].astype(np.int32) + int(params["color_intensity"] * 180)) % 180
+            hsv[..., 0] = hue.astype(np.uint8)
             result = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB).astype(np.float32) / 255
 
         else:  # random
@@ -107,8 +107,9 @@ class DataBend:
 
             if effect == "shift":
                 slices = self.create_slices(height, width, params)
+                max_offset = int(params["chaos_amount"] * 50)
                 for direction, start, end in slices:
-                    offset = int(params["chaos_amount"] * 50)
+                    offset = int(rng.integers(-max_offset, max_offset + 1)) if max_offset > 0 else 0
                     if direction == "h":
                         result[start:end] = np.roll(result[start:end], offset, axis=1)
                     else:
@@ -126,16 +127,20 @@ class DataBend:
             elif effect == "mirror":
                 if rng.random() < 0.5 and height > 2:
                     y = int(rng.integers(0, height // 2))
-                    size = int(rng.integers(10, min(50, height - y)))
-                    result[y:y+size] = np.flip(result[y:y+size], axis=1)
+                    max_size = min(50, height - y)
+                    if max_size > 10:
+                        size = int(rng.integers(10, max_size))
+                        result[y:y+size] = np.flip(result[y:y+size], axis=1)
                 elif width > 2:
                     x = int(rng.integers(0, width // 2))
-                    size = int(rng.integers(10, min(50, width - x)))
-                    result[:, x:x+size] = np.flip(result[:, x:x+size], axis=0)
+                    max_size = min(50, width - x)
+                    if max_size > 10:
+                        size = int(rng.integers(10, max_size))
+                        result[:, x:x+size] = np.flip(result[:, x:x+size], axis=0)
 
             elif effect == "noise":
                 noise_mask = rng.random(image.shape[:2]) < params["chaos_amount"] * 0.1
-                noise = rng.random((noise_mask.sum(), 3))
+                noise = rng.random((noise_mask.sum(), image.shape[-1]))
                 result[noise_mask] = noise
 
         return result
@@ -143,63 +148,65 @@ class DataBend:
     def apply_distortions(self, image, params):
         """Apply various distortion effects"""
         result = image.copy()
-        
+
         if params["wave_distortion"] > 0:
             height, width = image.shape[:2]
             x, y = np.meshgrid(np.arange(width), np.arange(height))
-            
+
             wave = np.sin(x/30) * params["wave_distortion"] * 20
             x_displaced = x + wave
-            
+
             for c in range(3):
-                result[..., c] = ndimage.map_coordinates(image[..., c], 
-                                                       [y, x_displaced], 
-                                                       order=1, 
+                result[..., c] = ndimage.map_coordinates(image[..., c],
+                                                       [y, x_displaced],
+                                                       order=1,
                                                        mode='reflect')
-                
+
         if params["compression_artifacts"] > 0:
             quality = int((1 - params["compression_artifacts"]) * 90 + 10)
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
             _, encoded = cv2.imencode('.jpg', (result * 255).astype(np.uint8), encode_param)
-            decoded = cv2.imdecode(encoded, 1).astype(np.float32) / 255
-            result = decoded[..., ::-1]  # BGR to RGB
-            
+            result = cv2.imdecode(encoded, 1).astype(np.float32) / 255
+
         if params["pixel_sorting"] > 0:
             brightness = np.mean(result, axis=2)
             threshold = np.percentile(brightness, params["pixel_sorting"] * 100)
-            
+
             for i in range(result.shape[0]):
                 mask = brightness[i] > threshold
                 if np.any(mask):
                     row = result[i, mask]
                     sorted_indices = np.argsort(np.mean(row, axis=1))
                     result[i, mask] = row[sorted_indices]
-                
+
         return result
 
     def process_single_image(self, image, params):
         """Process a single image with all effects"""
         result = image.copy()
-        
+
         result = self.apply_glitch_patterns(result, params)
         result = self.apply_color_shift(result, params)
         result = self.apply_distortions(result, params)
-        
+
         if params["preserve_bright_areas"] > 0:
             brightness = np.max(image, axis=2)
             mask = brightness > params["preserve_bright_areas"]
             result[mask] = image[mask]
-            
+
         return np.clip(result, 0, 1)
 
     def generate_databend(self, images, slice_direction, slice_min_size, slice_max_size,
                          slice_variability, channel_shift_mode, color_intensity,
                          rgb_shift_separate, preserve_bright_areas, glitch_types,
                          pattern_frequency, chaos_amount, seed, wave_distortion,
-                         compression_artifacts, pixel_sorting, control_after_generate):
+                         compression_artifacts, pixel_sorting):
         try:
             device = images.device
             batch_size = images.shape[0]
+
+            if slice_min_size > slice_max_size:
+                slice_min_size, slice_max_size = slice_max_size, slice_min_size
 
             params = {
                 "slice_direction": slice_direction,
@@ -217,8 +224,17 @@ class DataBend:
                 "wave_distortion": wave_distortion,
                 "compression_artifacts": compression_artifacts,
                 "pixel_sorting": pixel_sorting,
-                "_rng": np.random.default_rng(seed if seed != -1 else None),
             }
+
+            # Move the whole batch to CPU/numpy once
+            images_np = images.cpu().numpy().astype(np.float32)
+
+            alpha = None
+            if images_np.shape[-1] == 4:
+                alpha = images_np[..., 3:]
+                images_np = images_np[..., :3]
+            elif images_np.shape[-1] == 1:
+                images_np = np.repeat(images_np, 3, axis=-1)
 
             output_batch = []
 
@@ -226,13 +242,15 @@ class DataBend:
 
             pbar = comfy.utils.ProgressBar(batch_size)
             for b in range(batch_size):
-                img = images[b].cpu().numpy()
-                canvas = self.process_single_image(img, params)
-                canvas_tensor = torch.from_numpy(canvas).float()
-                output_batch.append(canvas_tensor)
+                params["_rng"] = np.random.default_rng(seed + b)
+                canvas = self.process_single_image(images_np[b], params)
+                output_batch.append(torch.from_numpy(canvas).float())
                 pbar.update(1)
 
-            result = torch.stack(output_batch).to(device)
+            result = torch.stack(output_batch)
+            if alpha is not None:
+                result = torch.cat([result, torch.from_numpy(np.ascontiguousarray(alpha))], dim=-1)
+            result = result.float().clamp(0, 1).to(device)
             logger.info("DataBend processing complete")
 
             return (result,)

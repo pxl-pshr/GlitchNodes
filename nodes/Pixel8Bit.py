@@ -5,12 +5,11 @@ from typing import List
 import torch
 import numpy as np
 import logging
-from PIL import Image
 import re
 
-logger = logging.getLogger(__name__)
-
 import comfy.utils
+
+logger = logging.getLogger(__name__)
 
 ########################
 # Utility: Palettes
@@ -165,16 +164,29 @@ def _bayer_matrix(n: int) -> np.ndarray:
 def _nearest_palette(img: np.ndarray, palette: np.ndarray) -> np.ndarray:
     # img: (H,W,3) float in [0,1]; palette: (K,3)
     H, W, _ = img.shape
-    flat = img.reshape(-1, 3)
-    diffs = flat[:, None, :] - palette[None, :, :]
-    dist2 = np.sum(diffs * diffs, axis=2)
-    idx = np.argmin(dist2, axis=1)
-    quant = palette[idx]
-    return quant.reshape(H, W, 3)
+    flat = img.reshape(-1, 3).astype(np.float32)
+    pal = palette.astype(np.float32)
+    pal_sq = np.sum(pal * pal, axis=1)
+    out = np.empty_like(flat)
+    chunk = 262144
+    for start in range(0, flat.shape[0], chunk):
+        f = flat[start:start + chunk]
+        # ||a||^2 + ||b||^2 - 2ab keeps memory at (N,K) instead of (N,K,3)
+        dist2 = np.sum(f * f, axis=1)[:, None] + pal_sq[None, :] - 2.0 * (f @ pal.T)
+        out[start:start + chunk] = pal[np.argmin(dist2, axis=1)]
+    return out.reshape(H, W, 3)
 
-def _kmeans_palette(img: np.ndarray, k: int, iters: int = 10, seed: int = 42) -> np.ndarray:
-    H, W, _ = img.shape
-    flat = img.reshape(-1, 3)
+def _palette_spread(palette: np.ndarray) -> float:
+    # Mean nearest-neighbor distance between palette colors
+    if palette.shape[0] < 2:
+        return 0.0
+    d = palette[:, None, :] - palette[None, :, :]
+    dist2 = np.sum(d * d, axis=2)
+    np.fill_diagonal(dist2, np.inf)
+    return float(np.mean(np.sqrt(np.min(dist2, axis=1))))
+
+def _kmeans_palette(pixels: np.ndarray, k: int, iters: int = 10, seed: int = 0) -> np.ndarray:
+    flat = pixels.reshape(-1, 3)
     rng = np.random.default_rng(seed)
     if flat.shape[0] > 20000:
         sample_idx = rng.choice(flat.shape[0], size=20000, replace=False)
@@ -182,7 +194,14 @@ def _kmeans_palette(img: np.ndarray, k: int, iters: int = 10, seed: int = 42) ->
     else:
         sample = flat
 
-    c_idx = rng.choice(sample.shape[0], size=max(2, k), replace=False)
+    if sample.shape[0] == 0:
+        return np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
+
+    k = min(max(2, k), sample.shape[0])
+    if sample.shape[0] == 1:
+        return np.repeat(sample, 2, axis=0).astype(np.float32)
+
+    c_idx = rng.choice(sample.shape[0], size=k, replace=False)
     centers = sample[c_idx].copy()
 
     for _ in range(iters):
@@ -209,22 +228,24 @@ def _posterize(img: np.ndarray, bits: int) -> np.ndarray:
 # Dithering
 ########################
 
-def _ordered_dither(img: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+def _ordered_dither(img: np.ndarray, matrix: np.ndarray, spread: float) -> np.ndarray:
     H, W, C = img.shape
     n = matrix.shape[0]
     tiled = np.tile(matrix, (H // n + 1, W // n + 1))[:H, :W]
-    thresh = tiled - 0.5
-    out = img + thresh[..., None] / max(8, n*n)  # subtle nudge
+    # Center the pattern and scale its amplitude to the palette spacing
+    out = img + (tiled - 0.5)[..., None] * spread
     return np.clip(out, 0.0, 1.0)
 
 def _floyd_steinberg(img: np.ndarray, palette: np.ndarray) -> np.ndarray:
     H, W, _ = img.shape
-    work = img.copy()
+    work = img.astype(np.float32).copy()
     out = np.zeros_like(work)
+    pal = palette.astype(np.float32)
     for y in range(H):
         for x in range(W):
             old = work[y, x]
-            new = _nearest_palette(old[None, None, :], palette)[0, 0]
+            d = pal - old
+            new = pal[np.argmin(np.sum(d * d, axis=1))]
             out[y, x] = new
             err = old - new
             if x+1 < W:
@@ -251,25 +272,20 @@ def _ensure_rgb01(arr: np.ndarray) -> np.ndarray:
     # unexpected channels
     return arr[..., :3]
 
-def _to_pil_uint8(img01: np.ndarray) -> Image.Image:
-    return Image.fromarray(np.clip(img01 * 255.0, 0, 255).astype(np.uint8), mode="RGB")
-
-def _from_pil_uint8(pil: Image.Image) -> np.ndarray:
-    arr = np.asarray(pil).astype(np.float32) / 255.0
-    if arr.ndim == 2:
-        arr = np.stack([arr, arr, arr], axis=-1)
-    return arr
-
 def _pixelate(img01: np.ndarray, pixel_size: int) -> np.ndarray:
     if pixel_size <= 1:
         return img01
     H, W, _ = img01.shape
-    down_w = max(1, W // pixel_size)
-    down_h = max(1, H // pixel_size)
-    pil = _to_pil_uint8(img01)
-    small = pil.resize((down_w, down_h), resample=Image.NEAREST)
-    back = small.resize((W, H), resample=Image.NEAREST)
-    return _from_pil_uint8(back)
+    # Box-mean downsample (handles ragged edge blocks), nearest upsample
+    ys = np.arange(0, H, pixel_size)
+    xs = np.arange(0, W, pixel_size)
+    sums = np.add.reduceat(np.add.reduceat(img01.astype(np.float32), ys, axis=0), xs, axis=1)
+    h_sizes = np.diff(np.append(ys, H)).astype(np.float32)
+    w_sizes = np.diff(np.append(xs, W)).astype(np.float32)
+    small = sums / (h_sizes[:, None] * w_sizes[None, :])[..., None]
+    row_idx = np.arange(H) // pixel_size
+    col_idx = np.arange(W) // pixel_size
+    return small[row_idx][:, col_idx]
 
 def _apply_gamma(img01: np.ndarray, gamma: float) -> np.ndarray:
     if gamma <= 0:
@@ -277,21 +293,24 @@ def _apply_gamma(img01: np.ndarray, gamma: float) -> np.ndarray:
     return np.power(np.clip(img01, 0, 1), 1.0/gamma)
 
 def _quantize(img01: np.ndarray, mode: str, palette_name: str, custom_hex: str, k_colors: int,
-              dithering: str, ordered_size: int, posterize_bits: int) -> np.ndarray:
+              dithering: str, ordered_size: int, posterize_bits: int, seed: int = 0,
+              adaptive_palette: np.ndarray = None) -> np.ndarray:
     if 1 <= posterize_bits < 8:
         img01 = _posterize(img01, posterize_bits)
 
     if mode == "Fixed Palette":
         pal = _get_fixed_palette(palette_name, custom_hex)
+    elif adaptive_palette is not None:
+        pal = adaptive_palette
     else:
         k = max(2, int(k_colors))
-        pal = _kmeans_palette(img01, k)
+        pal = _kmeans_palette(img01, k, seed=seed)
 
     if dithering == "Floyd-Steinberg":
         return _floyd_steinberg(img01, pal)
     elif dithering == "Ordered":
         M = _bayer_matrix(int(ordered_size))
-        pre = _ordered_dither(img01, M)
+        pre = _ordered_dither(img01, M, _palette_spread(pal))
         return _nearest_palette(pre, pal)
     else:
         return _nearest_palette(img01, pal)
@@ -305,12 +324,15 @@ def _process_frame(frame01: np.ndarray,
                    dithering: str,
                    ordered_size: int,
                    posterize_bits: int,
-                   gamma: float) -> np.ndarray:
+                   gamma: float,
+                   seed: int = 0,
+                   adaptive_palette: np.ndarray = None) -> np.ndarray:
     img = _ensure_rgb01(frame01)
     if gamma != 1.0:
         img = _apply_gamma(img, gamma)
     img = _pixelate(img, pixel_size)
-    img = _quantize(img, mode, palette_name, custom_hex, k_colors, dithering, ordered_size, posterize_bits)
+    img = _quantize(img, mode, palette_name, custom_hex, k_colors, dithering, ordered_size,
+                    posterize_bits, seed=seed, adaptive_palette=adaptive_palette)
     return np.clip(img, 0.0, 1.0)
 
 ########################
@@ -356,6 +378,9 @@ class Pixel8Bit:
                 "ordered_size": ("INT", {"default": 4, "min": 2, "max": 8, "step": 2}),
                 "posterize_bits": ("INT", {"default": 8, "min": 1, "max": 8, "step": 1}),
                 "gamma": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 3.0, "step": 0.05}),
+            },
+            "optional": {
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             }
         }
 
@@ -369,7 +394,8 @@ class Pixel8Bit:
                 dithering: str,
                 ordered_size: int,
                 posterize_bits: int,
-                gamma: float):
+                gamma: float,
+                seed: int = 0):
 
         # Expect IMAGE in [B,H,W,C] float32 0..1
         if not isinstance(IMAGE, torch.Tensor):
@@ -382,7 +408,21 @@ class Pixel8Bit:
 
         # Move to CPU for numpy ops (keeps VRAM usage low)
         img_np = img.detach().cpu().numpy().astype(np.float32)
+        alpha = img_np[..., 3:4] if C == 4 else None
         out_frames = []
+
+        # Adaptive palette: compute once from pixels sampled across the whole
+        # batch so animations don't flicker between per-frame palettes
+        adaptive_palette = None
+        if quant_mode != "Fixed Palette":
+            rgb_all = _ensure_rgb01(img_np).reshape(-1, 3)
+            rng = np.random.default_rng(seed)
+            if rgb_all.shape[0] > 20000:
+                sample_idx = rng.choice(rgb_all.shape[0], size=20000, replace=False)
+                rgb_all = rgb_all[sample_idx]
+            if gamma != 1.0:
+                rgb_all = _apply_gamma(rgb_all, gamma)
+            adaptive_palette = _kmeans_palette(rgb_all, max(2, int(k_colors)), seed=seed)
 
         # Progress bar
         pbar = comfy.utils.ProgressBar(B)
@@ -402,11 +442,15 @@ class Pixel8Bit:
                 dithering=dithering,
                 ordered_size=ordered_size,
                 posterize_bits=posterize_bits,
-                gamma=gamma
+                gamma=gamma,
+                seed=seed,
+                adaptive_palette=adaptive_palette
             )
             out_frames.append(out)
             pbar.update(1)
 
         out_np = np.stack(out_frames, axis=0)  # [B,H,W,3]
-        out_t = torch.from_numpy(out_np).to(IMAGE.device, dtype=IMAGE.dtype)
+        if alpha is not None:
+            out_np = np.concatenate([out_np, alpha], axis=-1)
+        out_t = torch.from_numpy(out_np).float().clamp(0.0, 1.0).to(IMAGE.device)
         return (out_t,)

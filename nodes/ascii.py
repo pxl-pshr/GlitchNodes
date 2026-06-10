@@ -26,24 +26,23 @@ class ASCII:
             'required': {
                 'IMAGE': ('IMAGE',),
                 'background': ('STRING', {'default': '#080c37'}),
-                'bgGradient': ('BOOLEAN', {'default': False}),
-                'bgSaturation': ('INT', {'default': 60, 'min': 0, 'max': 100}),
                 'fontColor': ('STRING', {'default': '#c7205b'}),
                 'fontColor2': ('STRING', {'default': '#00ff61'}),
                 'fontSizeFactor': ('FLOAT', {'default': 3.0, 'min': 0.1, 'max': 10.0}),
-                'resolution': ('INT', {'default': 137, 'min': 1}),
+                'resolution': ('INT', {'default': 137, 'min': 1, 'max': 512}),
                 'threshold': ('INT', {'default': 0, 'min': 0, 'max': 255}),
                 'invert': ('BOOLEAN', {'default': True}),
                 'randomness': ('INT', {'default': 15, 'min': 0, 'max': 100}),
                 'textType': (['Random Text', 'Input Text'], {}),
                 'textInput': ('STRING', {'default': 'pxlpshr', 'multiline': False}),
+                'seed': ('INT', {'default': 0, 'min': 0, 'max': 0xffffffffffffffff}),
             }
         }
 
     def execute(
-        self, IMAGE, background, bgGradient, bgSaturation,
+        self, IMAGE, background,
         fontColor, fontColor2, fontSizeFactor, resolution,
-        threshold, invert, randomness, textType, textInput
+        threshold, invert, randomness, textType, textInput, seed
     ):
         # 1) Convert input to PIL
         pil_images = self._tensor_to_pil(IMAGE)
@@ -51,27 +50,29 @@ class ASCII:
         # 2) Make ASCII
         ascii_images = []
         pbar_ascii = comfy.utils.ProgressBar(len(pil_images))
-        for img in pil_images:
+        for frame_index, img in enumerate(pil_images):
+            rng = random.Random(seed + frame_index)
             ascii_images.append(
                 self._make_ascii(
                     img, background, fontColor, fontColor2,
                     fontSizeFactor, resolution, threshold,
-                    invert, randomness, textType, textInput
+                    invert, randomness, textType, textInput, rng
                 )
             )
             pbar_ascii.update(1)
 
         # 3) Back to tensors
         ascii_tensors = []
-        pbar_tensors = comfy.utils.ProgressBar(len(ascii_images))
         for img in ascii_images:
             arr = np.array(img).astype(np.float32) / 255.0
             if arr.ndim == 2:
                 arr = np.stack([arr]*3, axis=-1)
             ascii_tensors.append(torch.from_numpy(arr))
-            pbar_tensors.update(1)
 
-        return (torch.stack(ascii_tensors),)
+        result = torch.stack(ascii_tensors).float().clamp(0, 1)
+        if hasattr(IMAGE, 'device'):
+            result = result.to(IMAGE.device)
+        return (result,)
 
     def _tensor_to_pil(self, image):
         if isinstance(image, dict):
@@ -91,7 +92,8 @@ class ASCII:
         return out
 
     def _array_to_pil(self, arr):
-        if arr.ndim == 3 and arr.shape[0] in (1, 3):
+        # Only treat as CHW if the last dim is not a plausible channel count
+        if arr.ndim == 3 and arr.shape[-1] not in (1, 3, 4) and arr.shape[0] in (1, 3):
             arr = np.transpose(arr, (1, 2, 0))
         if issubclass(arr.dtype.type, np.floating):
             arr = np.clip(arr * 255, 0, 255).astype(np.uint8)
@@ -99,23 +101,49 @@ class ASCII:
             arr = arr.astype(np.uint8)
         if arr.ndim == 2:
             arr = np.stack([arr]*3, axis=-1)
+        if arr.ndim == 3 and arr.shape[-1] == 1:
+            arr = np.repeat(arr, 3, axis=-1)
+        if arr.ndim == 3 and arr.shape[-1] == 4:
+            arr = arr[..., :3]
         return Image.fromarray(arr)
+
+    def _parse_hex_color(self, value, fallback):
+        s = str(value).strip().lstrip('#')
+        if len(s) == 3:
+            s = ''.join(c * 2 for c in s)
+        if len(s) == 6:
+            try:
+                return tuple(int(s[i:i+2], 16) for i in (0, 2, 4))
+            except ValueError:
+                pass
+        logger.warning(f"Invalid hex color '{value}', using fallback {fallback}")
+        return fallback
 
     def _make_ascii(
         self, pil_img, background, fc1, fc2, fsf,
-        res, thr, inv, rnd, ttype, tinput
+        res, thr, inv, rnd, ttype, tinput, rng
     ):
         w, h = pil_img.size
-        canvas = Image.new('RGB', (w, h), background)
-        draw = ImageDraw.Draw(canvas)
+        cell_w = w / res
 
-        # -- use Pillow's built-in bitmap font --
-        font = ImageFont.load_default()
+        # parse colors with safe fallbacks
+        bg = self._parse_hex_color(background, (8, 12, 55))
+        c1 = self._parse_hex_color(fc1, (199, 32, 91))
+        c2 = self._parse_hex_color(fc2, (0, 255, 97))
+
+        canvas = Image.new('RGB', (w, h), bg)
+
+        # scale Pillow's built-in font to the cell size (Pillow >= 10.1)
+        try:
+            font = ImageFont.load_default(size=max(1.0, cell_w * fsf))
+        except TypeError:
+            font = ImageFont.load_default()
 
         # measure one character to set grid
         mask = font.getmask('A')
         glyph_w, glyph_h = mask.size
-        cell_w = w / res
+        if glyph_w == 0 or glyph_h == 0:
+            glyph_w, glyph_h = 6, 11
         cell_h = cell_w * (glyph_h / glyph_w)
         rows = max(1, int(h / cell_h))
 
@@ -129,9 +157,17 @@ class ASCII:
         else:
             chars = list(' .:-=+*#%@')
 
-        # parse colors
-        c1 = tuple(int(fc1.lstrip('#')[i:i+2], 16) for i in (0,2,4))
-        c2 = tuple(int(fc2.lstrip('#')[i:i+2], 16) for i in (0,2,4))
+        # pre-render a glyph atlas: one mask per unique character
+        atlas = {}
+        for ch in set(chars):
+            bbox = font.getbbox(ch)
+            gw, gh = max(0, int(bbox[2])), max(0, int(bbox[3]))
+            if gw == 0 or gh == 0:
+                atlas[ch] = None
+                continue
+            tile = Image.new('L', (gw, gh), 0)
+            ImageDraw.Draw(tile).text((0, 0), ch, fill=255, font=font)
+            atlas[ch] = tile
 
         for i in range(rows):
             for j in range(res):
@@ -144,11 +180,15 @@ class ASCII:
                     continue
 
                 # pick glyph
-                if rnd > 0 and random.random() < rnd/100:
-                    ch = random.choice(chars)
+                if rnd > 0 and rng.random() < rnd/100:
+                    ch = rng.choice(chars)
                 else:
                     idx = int(lum/255*(len(chars)-1))
                     ch = chars[idx]
+
+                glyph = atlas.get(ch)
+                if glyph is None:
+                    continue
 
                 # blend color
                 t = lum / 255.0
@@ -158,6 +198,6 @@ class ASCII:
                     int(c1[2]*(1-t) + c2[2]*t),
                 )
 
-                draw.text((j*cell_w, i*cell_h), ch, fill=color, font=font)
+                canvas.paste(color, (int(j*cell_w), int(i*cell_h)), glyph)
 
         return canvas

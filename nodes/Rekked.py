@@ -21,7 +21,8 @@ class Rekked:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "mode": (cls.MODES,)
+                "mode": (cls.MODES,),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff})
             }
         }
 
@@ -31,50 +32,61 @@ class Rekked:
     CATEGORY = "GlitchNodes"
     DESCRIPTION = "Applies datamosh-inspired glitch effects with modes like vaporwave, chimera, void, and more"
 
-    def apply_rekked(self, image, mode):
+    def apply_rekked(self, image, mode, seed):
         logger.info(f"Applying Rekked effect: {mode}")
         try:
-            # Convert to numpy array
-            np_image = image.cpu().numpy()
+            np_image = image.cpu().numpy().astype(np.float32)
 
-            # Get image dimensions
+            if np_image.shape[-1] == 1:
+                np_image = np.repeat(np_image, 3, axis=-1)
+
             batch, height, width, channels = np_image.shape
 
-            # Reshape to 2D array
-            flat_image = np_image.reshape(-1, channels)
+            processed = []
+            for i in range(batch):
+                rng = np.random.default_rng(seed + i)
+                flat_image = np_image[i].reshape(-1, channels).copy()
+                moshed = self.modes[mode](flat_image, width, height, rng)
+                processed.append(moshed.reshape(height, width, channels))
 
-            # Apply the selected mode
-            moshed_image = self.modes[mode](flat_image.copy(), width, height)
-
-            # Reshape back to original dimensions
-            moshed_image = moshed_image.reshape(batch, height, width, channels)
-
-            # Convert back to torch tensor
+            moshed_image = np.clip(np.stack(processed, axis=0), 0, 1).astype(np.float32)
             moshed_image = torch.from_numpy(moshed_image).to(image.device)
 
-            logger.info(f"Rekked effect completed")
+            logger.info("Rekked effect completed")
             return (moshed_image,)
         except Exception as e:
             logger.error(f"Error in Rekked processing: {str(e)}")
             raise
 
-    def blurbobb(self, data, width, height):
+    def blurbobb(self, data, width, height, rng):
+        # Vectorized run-length version of the original per-pixel counter loop:
+        # randomize while counter < 64, pass through until counter exceeds 128,
+        # then reset the counter to a random value.
+        n = data.shape[0]
+        mask = np.zeros(n, dtype=bool)
+        i = 0
         counter = 0
-        for i in range(data.shape[0]):
+        while i < n:
             if counter < 64:
-                data[i] = np.random.rand(data.shape[1])
-            
-            counter += 1
-            if counter > 128:
-                counter = np.random.randint(128)
+                run = min(64 - counter, n - i)
+                mask[i:i + run] = True
+                i += run
+                counter += run
+            else:
+                run = min(129 - counter, n - i)
+                i += run
+                counter += run
+                if counter > 128:
+                    counter = int(rng.integers(128))
+        data[mask, :3] = rng.random((int(mask.sum()), 3), dtype=np.float32)
         return data
 
-    def fatcat(self, data, width, height):
+    def fatcat(self, data, width, height, rng):
         for _ in range(4):
-            data = np.minimum(data * 1.4, 1.0)
+            data[:, :3] = np.minimum(data[:, :3] * 1.4, 1.0)
         return data
 
-    def vaporwave(self, data, width, height):
+    def vaporwave(self, data, width, height, rng):
         COLORS = np.array([
             [0, 184/255, 1],
             [1, 0, 193/255],
@@ -82,13 +94,14 @@ class Rekked:
             [0, 1, 249/255]
         ])
 
+        rgb = data[:, :3]
         conditions = [
-            (data <= 15/255),
-            (data > 15/255) & (data <= 60/255),
-            (data > 60/255) & (data <= 120/255),
-            (data > 120/255) & (data <= 180/255),
-            (data > 180/255) & (data <= 234/255),
-            (data >= 235/255)
+            (rgb <= 15/255),
+            (rgb > 15/255) & (rgb <= 60/255),
+            (rgb > 60/255) & (rgb <= 120/255),
+            (rgb > 120/255) & (rgb <= 180/255),
+            (rgb > 180/255) & (rgb <= 234/255),
+            (rgb >= 235/255)
         ]
 
         choices = [
@@ -100,135 +113,147 @@ class Rekked:
             [1, 1, 1]
         ]
 
-        return np.select(conditions, choices, data)
-
-    def castles(self, data, width, height):
-        high, low = 165/255, 80/255
-        mask = (data < high) & (data > low)
-        data[~mask] = 0
+        data[:, :3] = np.select(conditions, choices, rgb).astype(np.float32)
         return data
 
-    def chimera(self, data, width, height):
+    def castles(self, data, width, height, rng):
+        high, low = 165/255, 80/255
+        rgb = data[:, :3]
+        mask = (rgb < high) & (rgb > low)
+        rgb[~mask] = 0
+        return data
+
+    def chimera(self, data, width, height, rng):
         noise_threshold = 0.2
         grain_threshold = 0.4
 
         mix = np.array([[1, 0.5, 0.25], [0.5, 1, 0.25], [0.25, 0.5, 1]], dtype=np.float32)
         data[:, :3] = data[:, :3] @ mix
 
+        rgb = data[:, :3]
+
         # Add noise, darken, and add grain
-        noise = np.random.random(data.shape) < noise_threshold
-        grain = np.random.random(data.shape) < grain_threshold
-        
-        data[noise] += np.random.randint(1, 16, size=data[noise].shape) / 255
-        data -= np.random.randint(0, 31, size=data.shape) / 255
-        data[grain] += np.random.randint(0, 51, size=data[grain].shape) / 255
-        
-        return np.clip(data, 0, 1)
+        noise = rng.random(rgb.shape) < noise_threshold
+        grain = rng.random(rgb.shape) < grain_threshold
 
-    def gazette(self, data, width, height):
-        has_alpha = data.shape[1] == 4
-        ret = np.zeros_like(data)
-        
-        for i in range(0, data.shape[0], 4):
-            if i % 12 == 0:
-                ret[i:i+4] = data[i:i+4]
-            else:
-                r, g, b = data[i, :3]
-                max_val = np.max([r, g, b])
-                min_val = np.min([r, g, b])
-                L = np.mean([r, g, b])
+        rgb[noise] += rng.integers(1, 16, size=int(noise.sum())) / 255
+        rgb -= rng.integers(0, 31, size=rgb.shape) / 255
+        rgb[grain] += rng.integers(0, 51, size=int(grain.sum())) / 255
 
-                if L > 0.65:
-                    value = 1
-                elif L < 0.35:
-                    value = 0
-                else:
-                    value = max_val if np.random.random() > 0.5 else min_val
+        data[:, :3] = np.clip(rgb, 0, 1)
+        return data
 
-                ret[i:i+3, :3] = value
-                if has_alpha:
-                    ret[i:i+3, 3] = 1  # Alpha channel
+    def gazette(self, data, width, height, rng):
+        # Vectorized over 4-pixel groups; every third group keeps the original
+        # pixels, the rest collapse to a single luma-derived value covering all
+        # 4 pixels (no stranded black pixels). Alpha passes through unchanged.
+        ret = data.copy()
+        n_groups = data.shape[0] // 4
+        if n_groups == 0:
+            return ret
+
+        first = data[:n_groups * 4:4, :3]
+        max_val = first.max(axis=1)
+        min_val = first.min(axis=1)
+        L = first.mean(axis=1)
+
+        value = np.where(
+            L > 0.65, 1.0,
+            np.where(
+                L < 0.35, 0.0,
+                np.where(rng.random(n_groups) > 0.5, max_val, min_val)
+            )
+        ).astype(np.float32)
+
+        keep = (np.arange(n_groups) % 3) == 0
+        groups = ret[:n_groups * 4].reshape(n_groups, 4, -1)
+        groups[~keep, :, :3] = value[~keep, np.newaxis, np.newaxis]
 
         return ret
 
-    def manticore95(self, data, width, height):
+    def manticore95(self, data, width, height, rng):
         def limiter(x, min_val):
             return max(x, min_val)
 
         def get_closest_root(x):
+            # Align offsets to 4-pixel groups so the scatter/skip artifacts stay
+            # column-aligned (keeps the blocky aesthetic consistent).
             return x - (x % 4)
 
         def max_offset(x):
             return np.argmax(x), np.max(x)
 
         original_shape = data.shape
-        sq_len = int(np.sqrt(data.shape[0]) / 8)
+        n = data.shape[0]
+        sq_len = int(np.sqrt(n) / 8)
         ret = np.zeros_like(data)
         i = 0
         out_i = 0
 
         has_alpha = data.shape[1] == 4
 
-        while i < data.shape[0] and out_i < data.shape[0]:
-            size = int(limiter(np.random.random() * (width / 40), 1))
+        while i < n and out_i < n:
+            size = int(limiter(rng.random() * (width / 40), 1))
             offset, max_val = max_offset(data[i, :3])
-            skip = get_closest_root(int(np.random.random() * sq_len))
+            skip = get_closest_root(int(rng.random() * sq_len))
 
-            for _ in range(size):
-                if i >= data.shape[0] or out_i >= data.shape[0]:
-                    break
-                ret[out_i, offset] = data[i, offset]
-                if has_alpha:
-                    ret[out_i, 3] = 1  # Alpha channel
-                out_i += 1
-                i += 1
+            copy = min(size, n - i, n - out_i)
+            ret[out_i:out_i + copy, offset] = data[i:i + copy, offset]
+            out_i += copy
+            i += copy
 
             out_i += skip
             i += skip
 
-        y_axises_count = int(np.sqrt(data.shape[0]) * 4)
+        y_axises_count = int(np.sqrt(n) * 4)
+        ks = np.arange(20)
         for _ in range(y_axises_count):
-            swap_from = get_closest_root(int(np.random.random() * data.shape[0]))
-            if swap_from < data.shape[0] - width * 64:
+            swap_from = get_closest_root(int(rng.random() * n))
+            if swap_from < n - width * 64:
                 for j in range(3):
-                    for k in range(20):
-                        swap_path = swap_from + j + width * 4 * (k - 4)
-                        if 0 <= swap_path < data.shape[0]:
-                            ret[swap_path, j] = ret[swap_from, j]
+                    swap_paths = swap_from + j + width * 4 * (ks - 4)
+                    valid = (swap_paths >= 0) & (swap_paths < n)
+                    ret[swap_paths[valid], j] = ret[swap_from, j]
+
+        if has_alpha:
+            ret[:, 3] = data[:, 3]
 
         # Ensure the output has the same shape as the input
         ret = ret[:original_shape[0], :original_shape[1]]
-        
+
         return ret
 
-    def schifty(self, data, width, height):
-        original_size = data.shape[0]
-        channels = data.shape[1]
-        result = np.zeros_like(data)
+    def schifty(self, data, width, height, rng):
+        # Datamosh-style chunk displacement: copy each chunk to a randomly
+        # shifted destination so rows smear and tear.
+        n = data.shape[0]
+        result = data.copy()
         index = 0
 
-        while index < original_size:
-            size = int(np.random.random() * 1024 * 4)
-            size = min(size, original_size - index)
-            
-            chunk = data[index:index+size]
-            result[index:index+size] = chunk
-            
+        while index < n:
+            size = max(int(rng.random() * 1024 * 4), 1)
+            size = min(size, n - index)
+
+            shift = int(rng.integers(1, max(width * 8, 2)))
+            dest = (index + shift) % n
+            count = min(size, n - dest)
+            result[dest:dest + count] = data[index:index + count]
+
             index += size
 
-        return result[:original_size]
+        return result
 
-    def vana(self, data, width, height):
+    def vana(self, data, width, height, rng):
         def give_seed():
             seed = np.zeros(3)
-            ind1, ind2 = np.random.choice(3, 2, replace=False)
-            seed[ind1] = max(np.random.random(), 0.3)
-            if np.random.random() > 0.5:
-                seed[ind2] = max(np.random.random(), 0.3)
+            ind1, ind2 = rng.choice(3, 2, replace=False)
+            seed[ind1] = max(rng.random(), 0.3)
+            if rng.random() > 0.5:
+                seed[ind2] = max(rng.random(), 0.3)
             return seed
 
         seed = give_seed()
-        
+
         # Apply the effect with more controlled scaling
         data[:, 0] = np.clip(data[:, 0] * seed[0] + 0.1 * seed[2], 0, 1)  # Red
         data[:, 1] = np.clip(data[:, 1] * seed[1] + 0.1 * seed[0], 0, 1)  # Green
@@ -239,18 +264,18 @@ class Rekked:
         data[:, :3] = data[:, :3] / (max_vals + 1e-8)
 
         # Add some randomness to break up solid colors
-        noise = np.random.random(data[:, :3].shape) * 0.1
+        noise = rng.random(data[:, :3].shape) * 0.1
         data[:, :3] = np.clip(data[:, :3] + noise, 0, 1)
 
         return data
 
-    def veneneux(self, data, width, height):
+    def veneneux(self, data, width, height, rng):
         def give_seed():
             seed = np.zeros(3)
-            ind1, ind2 = np.random.choice(3, 2, replace=False)
-            seed[ind1] = max(np.random.random(), 0.1)
-            if np.random.random() > 0.5:
-                seed[ind2] = max(np.random.random(), 0.1)
+            ind1, ind2 = rng.choice(3, 2, replace=False)
+            seed[ind1] = max(rng.random(), 0.1)
+            if rng.random() > 0.5:
+                seed[ind2] = max(rng.random(), 0.1)
             return seed
 
         seed = give_seed()
@@ -259,79 +284,76 @@ class Rekked:
             seed_change -= 1
             if seed_change == 0:
                 seed = give_seed()
-                seed_change = int(np.random.random() * height / 4)
-            
+                seed_change = int(rng.random() * height / 4)
+
             data[i:i+width, 0] = (data[i:i+width, 0] * seed[0] + seed[2]) % 1.0
             data[i:i+width, 1] = (data[i:i+width, 1] * seed[1] + seed[0]) % 1.0
             data[i:i+width, 2] = (data[i:i+width, 2] * seed[2] + seed[0]) % 1.0
-            if data.shape[1] == 4:
-                data[i:i+width, 3] = np.random.random(width)
 
         return data
 
-    def void(self, data, width, height):
+    def void(self, data, width, height, rng):
         noise_threshold = 0.2
         grain_threshold = 0.4
 
-        noise = np.random.random(data.shape) < noise_threshold
-        grain = np.random.random(data.shape) < grain_threshold
+        rgb = data[:, :3]
 
-        data -= np.random.randint(1, 16, data.shape) / 255
-        data[data < 0] += 1
+        noise = rng.random(rgb.shape) < noise_threshold
+        grain = rng.random(rgb.shape) < grain_threshold
 
-        data[noise] += np.random.randint(1, 16, data[noise].shape) / 255
-        data -= np.random.randint(0, 41, data.shape) / 255
-        data[grain] += np.random.randint(0, 51, data[grain].shape) / 255
+        rgb -= rng.integers(1, 16, rgb.shape) / 255
+        rgb[rgb < 0] += 1
 
-        return np.clip(data, 0, 1)
+        rgb[noise] += rng.integers(1, 16, int(noise.sum())) / 255
+        rgb -= rng.integers(0, 41, rgb.shape) / 255
+        rgb[grain] += rng.integers(0, 51, int(grain.sum())) / 255
 
-    def walter(self, data, width, height):
+        data[:, :3] = np.clip(rgb, 0, 1)
+        return data
+
+    def walter(self, data, width, height, rng):
         # Generate color thresholds with better distribution
         def balanced_seed():
             # Generate values between 0.2 and 0.8 to avoid extreme values
-            return np.random.uniform(0.2, 0.8)
-        
+            return rng.uniform(0.2, 0.8)
+
         # Create threshold arrays with balanced values
         hurp = np.array([balanced_seed() for _ in range(3)])
         lurp = np.array([balanced_seed() for _ in range(3)])
-        
+
         # Ensure lurp is always lower than hurp
         lurp, hurp = np.minimum(lurp, hurp), np.maximum(lurp, hurp)
-        
+
         # Calculate a balanced multiplier for each channel
-        multipliers = np.random.uniform(0.3, 0.7, size=3)
-        
+        multipliers = rng.uniform(0.3, 0.7, size=3)
+
         # Process each channel with individual characteristics
         for i in range(3):
             mask_low = data[:, i] < lurp[i]
             mask_high = data[:, i] > hurp[i]
             mask = mask_low | mask_high
-            
+
             # Apply transformation with channel-specific multiplier
             data[mask, i] = np.clip(
                 (hurp[i] - lurp[i]) * multipliers[i] + data[mask, i] * multipliers[i],
                 0, 1
             )
-        
+
         # Apply color balance correction
         # Calculate the mean intensity for each channel
         channel_means = np.mean(data[:, :3], axis=0)
-        
+
         # Calculate correction factors to balance the channels
         max_mean = np.max(channel_means)
         if max_mean > 0:
             correction_factors = 0.5 * (1 + channel_means / max_mean)
-            
+
             # Apply correction while maintaining the artistic effect
             for i in range(3):
                 data[:, i] = np.clip(data[:, i] * correction_factors[i], 0, 1)
-        
+
         # Add subtle noise to break up solid colors
-        noise = np.random.uniform(-0.05, 0.05, size=data[:, :3].shape)
+        noise = rng.uniform(-0.05, 0.05, size=data[:, :3].shape)
         data[:, :3] = np.clip(data[:, :3] + noise, 0, 1)
-        
-        # Preserve alpha channel if it exists
-        if data.shape[1] == 4:
-            data[:, 3] = 1.0
-            
+
         return data

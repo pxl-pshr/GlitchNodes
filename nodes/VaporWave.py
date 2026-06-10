@@ -83,60 +83,65 @@ class VaporWave:
                        color3_r, color3_g, color3_b,
                        color4_r, color4_g, color4_b):
         logger.info("Applying VaporWave effect...")
-        
+
         # Convert to numpy array
-        np_image = image.cpu().numpy()
+        np_image = image.cpu().numpy().astype(np.float32)
         batch, height, width, channels = np_image.shape
-        
+
+        # Separate alpha and normalize to RGB
+        alpha = None
+        if channels == 4:
+            alpha = np_image[..., 3:4]
+            rgb = np_image[..., :3]
+        elif channels == 1:
+            rgb = np.repeat(np_image, 3, axis=-1)
+        else:
+            rgb = np_image[..., :3]
+
         # Create color arrays from individual components
         colors = np.array([
             [color1_r, color1_g, color1_b],
             [color2_r, color2_g, color2_b],
             [color3_r, color3_g, color3_b],
             [color4_r, color4_g, color4_b]
-        ])
-        
-        # Reshape to 2D for processing
-        flat_image = np_image.reshape(-1, channels)
-        
-        # Create result array
-        result = np.zeros_like(flat_image)
-        
-        # Process in chunks with progress bar
-        chunk_size = 100000  # Adjust based on memory constraints
-        num_chunks = (flat_image.shape[0] + chunk_size - 1) // chunk_size
+        ], dtype=np.float32)
 
-        pbar = comfy.utils.ProgressBar(num_chunks)
-        for i in range(0, flat_image.shape[0], chunk_size):
-            chunk = flat_image[i:i+chunk_size]
+        # Ensure thresholds are in ascending order so no band silently empties
+        thresholds = sorted([threshold_dark, mid_threshold_1, mid_threshold_2,
+                             mid_threshold_3, threshold_light])
+        t_dark, mid_1, mid_2, mid_3, t_light = thresholds
 
-            conditions = [
-                (chunk <= threshold_dark),
-                (chunk > threshold_dark) & (chunk <= mid_threshold_1),
-                (chunk > mid_threshold_1) & (chunk <= mid_threshold_2),
-                (chunk > mid_threshold_2) & (chunk <= mid_threshold_3),
-                (chunk > mid_threshold_3) & (chunk <= threshold_light),
-                (chunk > threshold_light)
-            ]
+        pbar = comfy.utils.ProgressBar(1)
 
-            choices = [
-                [0, 0, 0],
-                colors[0],
-                colors[1],
-                colors[2],
-                colors[3],
-                [1, 1, 1]
-            ]
+        # Per-pixel luminance drives the palette mapping
+        luminance = (0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2])[..., None]
 
-            result[i:i+chunk_size] = np.select(conditions, choices, chunk)
-            pbar.update(1)
-        
-        # Preserve alpha channel if it exists
-        if channels == 4:
-            result[:, 3] = flat_image[:, 3]
-        
-        # Reshape back to original dimensions
-        result = result.reshape(batch, height, width, channels)
+        conditions = [
+            (luminance <= t_dark),
+            (luminance > t_dark) & (luminance <= mid_1),
+            (luminance > mid_1) & (luminance <= mid_2),
+            (luminance > mid_2) & (luminance <= mid_3),
+            (luminance > mid_3) & (luminance <= t_light),
+            (luminance > t_light)
+        ]
+
+        choices = [
+            np.array([0, 0, 0], dtype=np.float32),
+            colors[0],
+            colors[1],
+            colors[2],
+            colors[3],
+            np.array([1, 1, 1], dtype=np.float32)
+        ]
+
+        result = np.select(conditions, choices, rgb)
+        pbar.update(1)
+
+        # Reattach alpha channel if it exists
+        if alpha is not None:
+            result = np.concatenate([result, alpha], axis=-1)
+
+        result = np.clip(result, 0.0, 1.0).astype(np.float32)
 
         logger.info("VaporWave effect completed!")
 

@@ -15,7 +15,7 @@ class LuminousFlow:
     A ComfyUI node that transforms images into flowing luminous strands,
     creating an ethereal effect of light threads that follow the image's features.
     """
-    
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -84,127 +84,99 @@ class LuminousFlow:
     CATEGORY = "GlitchNodes"
     DESCRIPTION = "Transform images into flowing luminous strands with ethereal glow effects"
 
-    def enhance_colors(self, color, vibrancy, contrast):
-        """Enhanced color processing with neon effect"""
+    def enhance_colors(self, colors, glow_intensity, vibrancy, contrast):
+        """Enhanced color processing with neon effect, vectorized over a row of pixels"""
         # Convert to HSV for better color manipulation
-        color_rgb = np.clip(color * 255, 0, 255).astype(np.uint8).reshape(1, 1, 3)
-        color_hsv = cv2.cvtColor(color_rgb, cv2.COLOR_RGB2HSV)
-        
-        # Super aggressive saturation enhancement
-        color_hsv[0, 0, 1] = np.clip(color_hsv[0, 0, 1] * vibrancy * 1.5, 0, 255)
-        
-        # Enhanced value/brightness with extra pop
-        color_hsv[0, 0, 2] = np.clip(color_hsv[0, 0, 2] * contrast * 1.5, 0, 255)
-        
-        # Convert back to RGB
-        enhanced_rgb = cv2.cvtColor(color_hsv, cv2.COLOR_HSV2RGB)
-        enhanced_color = enhanced_rgb[0, 0] / 255.0
-        
-        # Additional contrast enhancement with more aggressive gamma
-        enhanced_color = np.power(enhanced_color, 0.7)
-        enhanced_color = np.power(enhanced_color, 1/contrast)
-        
-        # Extra boost to bright areas
-        enhanced_color = np.where(enhanced_color > 0.5, 
-                                enhanced_color * 1.3,
-                                enhanced_color * 0.7)
-        
-        return np.clip(enhanced_color, 0, 1)
+        rgb_u8 = np.clip(colors * 255, 0, 255).astype(np.uint8).reshape(1, -1, 3)
+        hsv = cv2.cvtColor(rgb_u8, cv2.COLOR_RGB2HSV).astype(np.float32)
 
-    def draw_line(self, img, start_point, end_point, color, thickness=1, glow_spread=0):
-        """Enhanced glow effect with neon quality"""
-        if glow_spread > 0:
-            # Create super intense central glow
-            center_glow = color * 2.5
-            cv2.line(img, 
-                    (int(start_point[0]), int(start_point[1])), 
-                    (int(end_point[0]), int(end_point[1])), 
-                    np.clip(center_glow, 0, 1).tolist(),
-                    thickness + 2,
-                    cv2.LINE_AA)
-            
-            # Create multiple layers of glow with increased intensity
-            for i in range(glow_spread, 0, -1):
-                glow_color = color * (2.5 / (i + 0.2))
-                cv2.line(img, 
-                        (int(start_point[0]), int(start_point[1])), 
-                        (int(end_point[0]), int(end_point[1])), 
-                        np.clip(glow_color, 0, 1).tolist(),
-                        thickness + i*2,
-                        cv2.LINE_AA)
-            
-            # Add an extra intense inner glow
-            inner_glow = color * 3.0
-            cv2.line(img, 
-                    (int(start_point[0]), int(start_point[1])), 
-                    (int(end_point[0]), int(end_point[1])), 
-                    np.clip(inner_glow, 0, 1).tolist(),
-                    thickness + 1,
-                    cv2.LINE_AA)
-        
-        # Draw main line with increased intensity
-        cv2.line(img, 
-                (int(start_point[0]), int(start_point[1])), 
-                (int(end_point[0]), int(end_point[1])), 
-                np.clip(color * 1.5, 0, 1).tolist(),
-                thickness,
-                cv2.LINE_AA)
+        # Super aggressive saturation enhancement
+        hsv[..., 1] = np.clip(hsv[..., 1] * vibrancy * 1.5, 0, 255)
+
+        # Enhanced value/brightness with extra pop
+        hsv[..., 2] = np.clip(hsv[..., 2] * contrast * 1.5, 0, 255)
+
+        # Convert back to RGB
+        enhanced = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
+        enhanced = enhanced.reshape(-1, 3).astype(np.float32) / 255.0
+
+        # Additional contrast enhancement with more aggressive gamma
+        enhanced = np.power(enhanced, 0.7)
+        enhanced = np.power(enhanced, 1 / contrast)
+
+        # Extra boost to bright areas
+        enhanced = np.where(enhanced > 0.5,
+                            enhanced * 1.3,
+                            enhanced * 0.7)
+        enhanced = np.clip(enhanced, 0, 1)
+
+        # Apply intensity scaling after hue/saturation handling so hue survives
+        return enhanced * glow_intensity
 
     def process_image(self, img, params, batch_idx=0, total_batches=1):
         height, width = img.shape[:2]
 
         logger.info(f"Processing image {batch_idx + 1}/{total_batches}, size: {width}x{height}")
-        
+
+        rgb = np.ascontiguousarray(img[..., :3].astype(np.float32))
+
         # Enhanced preprocessing with more contrast
-        intensity_map = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        intensity_map = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
         intensity_map = cv2.GaussianBlur(intensity_map, (3, 3), 0)
-        
+
         # More aggressive contrast in intensity map
         intensity_map = np.power(intensity_map, params["contrast"] * 1.2)
         intensity_map = (intensity_map - intensity_map.min()) / (intensity_map.max() - intensity_map.min() + 1e-7)
-        
+
         # Create darker background
-        background = img * params["darkness"] * 0.8
-        canvas = background.copy()
-        
-        max_lines = (height - 2 * params["line_spacing"]) // params["line_spacing"]
+        canvas = rgb * params["darkness"] * 0.8
+
+        max_lines = max(0, (height - 2 * params["line_spacing"]) // params["line_spacing"])
+        if max_lines <= 0:
+            logger.info("Image too small for line spacing, returning darkened background")
+            return np.clip(canvas, 0, 1)
+
         line_positions = np.linspace(params["line_spacing"], height - params["line_spacing"], max_lines)
 
         logger.info(f"Generating {len(line_positions)} luminous lines")
 
-        pbar = comfy.utils.ProgressBar(len(line_positions))
+        thickness = params["line_thickness"]
+        xs = np.arange(width, dtype=np.float32)
+        core = np.zeros((height, width, 3), dtype=np.float32)
+        mask = np.zeros((height, width), dtype=np.float32)
+
         for pos in line_positions:
-            points = []
-            colors = []
+            y_pos = min(int(pos), height - 1)
 
-            for x in range(width):
-                y_pos = int(pos)
-                # Enhanced color processing
-                base_color = img[min(y_pos, height-1), x]
-                color = base_color * params["glow_intensity"]
-                color = self.enhance_colors(color, params["vibrancy"], params["contrast"])
-                color = np.clip(color, 0, 1)
-                colors.append(color)
+            # Enhanced color processing for the whole row at once
+            colors = self.enhance_colors(rgb[y_pos], params["glow_intensity"],
+                                         params["vibrancy"], params["contrast"])
 
-                displacement = -intensity_map[y_pos, x] * params["line_spacing"] * params["flow_intensity"]
-                new_y = np.clip(pos + displacement, 0, height - 1)
-                points.append((float(x), float(new_y)))
+            displacement = -intensity_map[y_pos, :] * params["line_spacing"] * params["flow_intensity"]
+            ys = np.clip(pos + displacement, 0, height - 1)
 
             if params["smoothing"] > 0:
-                points = np.array(points)
-                points[:, 1] = gaussian_filter1d(points[:, 1], params["smoothing"])
+                ys = gaussian_filter1d(ys, params["smoothing"])
+                ys = np.clip(ys, 0, height - 1)
 
-            for i in range(len(points) - 1):
-                self.draw_line(canvas,
-                             points[i],
-                             points[i + 1],
-                             colors[i],
-                             params["line_thickness"],
-                             params["glow_spread"])
+            pts = np.stack([xs, ys], axis=1).round().astype(np.int32).reshape(-1, 1, 2)
 
-            pbar.update(1)
-        
-        return canvas
+            # Rasterize the strand once, then colorize per column
+            mask.fill(0)
+            cv2.polylines(mask, [pts], False, 1.0, thickness, cv2.LINE_AA)
+
+            y0 = max(0, int(ys.min()) - thickness - 2)
+            y1 = min(height, int(ys.max()) + thickness + 3)
+            core[y0:y1] += mask[y0:y1, :, None] * colors[None, :, :]
+
+        # Accumulate strands and glow additively
+        canvas = canvas + core * 1.5
+        if params["glow_spread"] > 0:
+            for i in range(1, params["glow_spread"] + 1):
+                weight = (2.5 / (i + 0.2)) / params["glow_spread"]
+                canvas += cv2.GaussianBlur(core, (0, 0), sigmaX=float(i)) * weight
+
+        return np.clip(canvas, 0, 1)
 
     def create_luminous_flow(self, image, line_spacing, line_thickness, flow_intensity,
                            smoothing, glow_intensity, darkness, vibrancy, glow_spread,
@@ -215,9 +187,16 @@ class LuminousFlow:
                    f"line_spacing={line_spacing}, flow_intensity={flow_intensity}, "
                    f"glow_intensity={glow_intensity}, vibrancy={vibrancy}, contrast={contrast}, "
                    f"glow_spread={glow_spread}")
-        
-        image_np = image.cpu().numpy()
-        
+
+        image_np = image.cpu().numpy().astype(np.float32)
+
+        alpha = None
+        if image_np.shape[-1] == 4:
+            alpha = np.ascontiguousarray(image_np[..., 3:])
+            image_np = image_np[..., :3]
+        elif image_np.shape[-1] == 1:
+            image_np = np.repeat(image_np, 3, axis=-1)
+
         params = {
             "line_spacing": line_spacing,
             "line_thickness": line_thickness,
@@ -229,7 +208,7 @@ class LuminousFlow:
             "glow_spread": glow_spread,
             "contrast": contrast
         }
-        
+
         output_batch = []
         pbar = comfy.utils.ProgressBar(batch_size)
         for i in range(batch_size):
@@ -240,4 +219,7 @@ class LuminousFlow:
 
         logger.info("Luminous Flow processing complete")
 
-        return (torch.stack(output_batch),)
+        result = torch.stack(output_batch)
+        if alpha is not None:
+            result = torch.cat([result, torch.from_numpy(alpha)], dim=-1)
+        return (result.float().clamp(0, 1).to(image.device),)

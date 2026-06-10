@@ -101,7 +101,7 @@ class LineScreen:
     CATEGORY = "GlitchNodes"
     DESCRIPTION = "Convert images to line screen patterns with customizable angle and spacing"
     
-    def create_line_pattern(self, width, height, spacing, angle, invert, line_color, bg_color):
+    def create_line_pattern(self, width, height, spacing, angle, line_color, bg_color):
         diagonal = int(math.sqrt(width**2 + height**2)) * 2
         pattern = Image.new('RGB', (diagonal, diagonal), tuple([int(c * 255) for c in bg_color]))
         draw = ImageDraw.Draw(pattern)
@@ -122,61 +122,60 @@ class LineScreen:
         
         return pattern.crop((left, top, right, bottom))
     
-    def process_single_image(self, image_np, W, H, line_spacing, angle, threshold, contrast_boost, invert, 
-                           line_color_r, line_color_g, line_color_b,
-                           bg_color_r, bg_color_g, bg_color_b):
-        if len(image_np.shape) == 3:
-            img = Image.fromarray((image_np * 255).astype(np.uint8), mode='RGB')
+    def process_single_image(self, image_np, pattern_array, bg_color, threshold, contrast_boost, invert):
+        if image_np.ndim == 2:
+            image_np = image_np[..., np.newaxis]
+        if image_np.shape[-1] == 1:
+            rgb = np.repeat(image_np, 3, axis=-1)
         else:
-            img = Image.fromarray((image_np * 255).astype(np.uint8), mode='L')
-        
+            rgb = image_np[..., :3]
+
+        img = Image.fromarray((np.clip(rgb, 0.0, 1.0) * 255).astype(np.uint8), mode='RGB')
+
         img_gray = ImageOps.grayscale(img)
         if invert:
             img_gray = ImageOps.invert(img_gray)
         img_contrast = ImageEnhance.Contrast(img_gray).enhance(contrast_boost)
-        
-        line_color = [line_color_r, line_color_g, line_color_b]
-        bg_color = [bg_color_r, bg_color_g, bg_color_b]
-        
-        if invert:
-            line_color, bg_color = bg_color, line_color
-        
-        result = np.zeros((H, W, 3), dtype=np.float32)
-        pattern = self.create_line_pattern(W, H, line_spacing, angle, invert, line_color, bg_color)
-        pattern_array = np.array(pattern) / 255.0
+
         mask = np.array(img_contrast) < (255 * threshold)
-        
-        for c in range(3):
-            result[..., c] = np.where(mask, pattern_array[..., c], bg_color[c])
-        
-        return result
-    
+        bg = np.array(bg_color, dtype=np.float32)
+
+        return np.where(mask[..., np.newaxis], pattern_array, bg).astype(np.float32)
+
     def apply_line_screen(self, image, line_spacing, angle, threshold, contrast_boost, invert,
                          line_color_r, line_color_g, line_color_b,
                          bg_color_r, bg_color_g, bg_color_b):
         device = image.device
         B, H, W, C = image.shape
-        
-        result_list = []
+
         image_np_batch = image.cpu().numpy()
+        alpha = image_np_batch[..., 3:4] if C == 4 else None
+
+        line_color = [line_color_r, line_color_g, line_color_b]
+        bg_color = [bg_color_r, bg_color_g, bg_color_b]
+
+        # Pattern only depends on geometry and colors, build it once per batch
+        pattern = self.create_line_pattern(W, H, line_spacing, angle, line_color, bg_color)
+        pattern_array = (np.array(pattern, dtype=np.float32) / 255.0)[..., :3]
+
+        result_list = []
         pbar = comfy.utils.ProgressBar(B)
 
         for b in range(B):
             single_result = self.process_single_image(
                 image_np_batch[b],
-                W, H,
-                line_spacing,
-                angle,
+                pattern_array,
+                bg_color,
                 threshold,
                 contrast_boost,
-                invert,
-                line_color_r, line_color_g, line_color_b,
-                bg_color_r, bg_color_g, bg_color_b
+                invert
             )
             result_list.append(single_result)
             pbar.update(1)
-        
+
         result_array = np.stack(result_list)
-        result_tensor = torch.from_numpy(result_array).to(device=device, dtype=torch.float32)
-        
+        if alpha is not None:
+            result_array = np.concatenate([result_array, alpha], axis=-1)
+        result_tensor = torch.from_numpy(result_array).to(dtype=torch.float32).clamp(0.0, 1.0).to(device)
+
         return (result_tensor,)

@@ -15,7 +15,7 @@ class VHSonAcid:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "slice_size": ("INT", {
                     "default": 20,
                     "min": 1,
@@ -52,29 +52,22 @@ class VHSonAcid:
     def create_slice_indices(self, height, slice_size, glitch_probability, rng):
         """Create random slice indices"""
         slices = []
-        for i in range(0, height - slice_size, slice_size):
+        for i in range(0, height, slice_size):
             if rng.random() < glitch_probability:
-                slices.append((i, i + slice_size))
+                slices.append((i, min(i + slice_size, height)))
         return slices
 
     def shift_slice(self, image, start, end, offset_range, rng):
         """Shift a slice of the image horizontally"""
         offset = int(rng.integers(-offset_range, offset_range + 1))
-        slice_data = image[start:end].copy()
-
-        if offset > 0:
-            image[start:end, offset:] = slice_data[:, :-offset]
-            image[start:end, :offset] = slice_data[:, -offset:]
-        elif offset < 0:
-            image[start:end, :offset] = slice_data[:, -offset:]
-            image[start:end, offset:] = slice_data[:, :-offset]
-
+        if offset != 0:
+            image[start:end] = np.roll(image[start:end], offset, axis=1)
         return image
 
     def rgb_shift(self, image, amount, rng):
         """Apply RGB channel shifting"""
         result = image.copy()
-        for i in range(3):
+        for i in range(min(3, image.shape[-1])):
             shift = int(rng.uniform(-amount * 30, amount * 30))
             if shift != 0:
                 result[..., i] = np.roll(image[..., i], shift, axis=1)
@@ -107,12 +100,14 @@ class VHSonAcid:
         for b in range(batch_size):
             rng = np.random.default_rng(seed + b)
             img = images[b].cpu().numpy()
+            if channels == 1:
+                img = np.repeat(img, 3, axis=-1)
             canvas = self.process_single_image(img, slice_size, offset_range, color_shift, glitch_probability, rng)
             canvas_tensor = torch.from_numpy(canvas).float()
             output_batch.append(canvas_tensor)
             pbar.update(1)
 
-        result = torch.stack(output_batch).to(device)
+        result = torch.stack(output_batch).clamp(0, 1).to(device)
 
         logger.info("Glitch processing complete!")
         

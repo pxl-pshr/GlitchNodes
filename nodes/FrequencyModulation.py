@@ -3,7 +3,6 @@
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 import comfy.utils
 import logging
 
@@ -16,8 +15,8 @@ class FrequencyModulation:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "carrier_frequency": ("FLOAT", {"default": 10, "min": 0.01, "max": 10.0, "step": 0.01}),
-                "bandwidth": ("FLOAT", {"default": 10, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "carrier_frequency": ("FLOAT", {"default": 10, "min": 0.01, "max": 100.0, "step": 0.01}),
+                "bandwidth": ("FLOAT", {"default": 10, "min": 0.1, "max": 100.0, "step": 0.1}),
                 "quantization": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
                 "colorspace": (["RGB", "YUV"],),
                 "first_channel_only": ("BOOLEAN", {"default": False}),
@@ -46,17 +45,29 @@ class FrequencyModulation:
             pbar = comfy.utils.ProgressBar(7)
             # ComfyUI IMAGE is [B,H,W,C] — convert to [B,C,H,W] for conv2d processing
             img = image.float().permute(0, 3, 1, 2)
+
+            # Normalize channels: expand grayscale, split off alpha
+            alpha = None
+            if img.shape[1] == 1:
+                img = img.expand(-1, 3, -1, -1).contiguous()
+            elif img.shape[1] == 4:
+                alpha = img[:, 3:4]
+                img = img[:, :3]
+            else:
+                img = img[:, :3]
             original_img = img.clone()
             pbar.update(1)
 
-            img = self.to_colorspace(img, colorspace)
+            converted = self.to_colorspace(img, colorspace)
             if first_channel_only:
-                img = img[:, 0:1]
+                img = converted[:, 0:1]
+            else:
+                img = converted
             pbar.update(1)
 
             b, c, h, w = img.shape
             phase = torch.cumsum(img, dim=-1) * bandwidth
-            t = torch.arange(w, dtype=torch.float32, device=img.device).view(1, 1, 1, -1).repeat(b, c, h, 1)
+            t = torch.arange(w, dtype=torch.float32, device=img.device).view(1, 1, 1, -1).expand(b, c, h, -1)
             modulated = torch.cos(2 * torch.pi * carrier_frequency * t + phase)
             pbar.update(1)
 
@@ -84,16 +95,22 @@ class FrequencyModulation:
             if negate:
                 result = 1 - result
 
+            if first_channel_only:
+                result = torch.cat([result, converted[:, 1:]], dim=1)
+
             result = self.from_colorspace(result, colorspace)
             if blend_mode != "NONE":
                 result = self.apply_blend_mode(original_img, result, blend_mode)
             pbar.update(1)
 
+            if alpha is not None:
+                result = torch.cat([result, alpha], dim=1)
+
             # Convert back from [B,C,H,W] to [B,H,W,C]
             result = result.permute(0, 2, 3, 1)
 
             logger.info("Frequency modulation processing completed")
-            return (result.float().clamp(0, 1),)
+            return (result.float().clamp(0, 1).to(image.device),)
         except Exception as e:
             logger.error(f"Error in frequency modulation processing: {str(e)}")
             raise

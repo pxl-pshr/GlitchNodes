@@ -9,6 +9,21 @@ import comfy.utils
 
 logger = logging.getLogger(__name__)
 
+try:
+    from scipy.signal import lfilter as _lfilter
+except ImportError:
+    _lfilter = None
+
+_scipy_warned = False
+
+
+def _warn_no_scipy():
+    global _scipy_warned
+    if not _scipy_warned:
+        logger.warning("scipy not found; TvGlitch is falling back to slow Python loops. "
+                       "Install scipy for much faster processing.")
+        _scipy_warned = True
+
 
 def _iir_lowpass_rows(arr, alpha, delay=0, passes=1):
     """Apply first-order IIR lowpass per row with optional delay shift.
@@ -18,13 +33,13 @@ def _iir_lowpass_rows(arr, alpha, delay=0, passes=1):
     b = np.array([alpha], dtype=np.float64)
     a = np.array([1.0, -(1.0 - alpha)], dtype=np.float64)
 
-    try:
-        from scipy.signal import lfilter
+    if _lfilter is not None:
         result = arr.copy()
         for _ in range(passes):
-            result = lfilter(b, a, result, axis=-1)
-    except ImportError:
+            result = _lfilter(b, a, result, axis=-1)
+    else:
         # Fallback: per-row loop (still much faster than per-pixel Python)
+        _warn_no_scipy()
         result = arr.copy()
         beta = 1.0 - alpha
         for _ in range(passes):
@@ -44,15 +59,14 @@ def _iir_noise_signal(deltas):
 
     Uses scipy.signal.lfilter when available, falls back to cumulative loop.
     """
-    try:
-        from scipy.signal import lfilter
-        return lfilter([1.0], [1.0, -0.5], deltas)
-    except ImportError:
-        out = np.empty_like(deltas)
-        out[0] = deltas[0]
-        for i in range(1, len(deltas)):
-            out[i] = 0.5 * out[i - 1] + deltas[i]
-        return out
+    if _lfilter is not None:
+        return _lfilter([1.0], [1.0, -0.5], deltas)
+    _warn_no_scipy()
+    out = np.empty_like(deltas)
+    out[0] = deltas[0]
+    for i in range(1, len(deltas)):
+        out[i] = 0.5 * out[i - 1] + deltas[i]
+    return out
 
 
 class TvGlitch:
@@ -68,7 +82,8 @@ class TvGlitch:
                 "video_chroma_phase_noise": ("INT", {"default": 15, "min": 0, "max": 100, "step": 1}),
                 "video_chroma_loss": ("FLOAT", {"default": 0.24, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "composite_preemphasis": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 0.1}),
-                "scanlines_scale": ("FLOAT", {"default": 1.5, "min": 0.0, "max": 5.0, "step": 0.1}),
+                "scanlines_scale": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 5.0, "step": 0.1}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             },
         }
 
@@ -79,28 +94,37 @@ class TvGlitch:
     DESCRIPTION = "Simulates analog TV glitch effects including chroma noise, video noise, and scanlines"
 
     def apply_tv_glitch(self, image, subcarrier_amplitude, video_noise, video_chroma_noise,
-                       video_chroma_phase_noise, video_chroma_loss, composite_preemphasis, scanlines_scale):
+                       video_chroma_phase_noise, video_chroma_loss, composite_preemphasis,
+                       scanlines_scale, seed):
         logger.info("Starting TV glitch effect processing...")
 
         try:
-            image = image.float()
-            if image.max() > 1.0:
-                image = image / 255.0
+            batch_np = image.float().cpu().numpy()
 
-            pbar = comfy.utils.ProgressBar(image.shape[0])
+            if batch_np.shape[-1] == 1:
+                batch_np = np.repeat(batch_np, 3, axis=-1)
+
+            alpha = None
+            if batch_np.shape[-1] == 4:
+                alpha = batch_np[..., 3:4].copy()
+                batch_np = batch_np[..., :3]
+
+            pbar = comfy.utils.ProgressBar(batch_np.shape[0])
             processed_images = []
-            for i in range(image.shape[0]):
-                img_np = image[i].cpu().numpy()
-                img_cv = self.process_frame(img_np, subcarrier_amplitude, video_noise, video_chroma_noise,
-                                         video_chroma_phase_noise, video_chroma_loss, composite_preemphasis)
+            for i in range(batch_np.shape[0]):
+                rng = np.random.default_rng(seed + i)
+                img_cv = self.process_frame(batch_np[i], subcarrier_amplitude, video_noise, video_chroma_noise,
+                                         video_chroma_phase_noise, video_chroma_loss, composite_preemphasis, rng)
 
-                if scanlines_scale > 1:
-                    img_cv = self.render_scanlines(img_cv, scanlines_scale)
+                if scanlines_scale > 1.0:
+                    img_cv = self.render_scanlines(img_cv, scanlines_scale, rng)
 
                 processed_images.append(img_cv)
                 pbar.update(1)
 
             img_np = np.stack(processed_images, axis=0)
+            if alpha is not None:
+                img_np = np.concatenate([img_np, alpha], axis=-1)
             img_tensor = torch.from_numpy(img_np).to(image.device)
             img_tensor = img_tensor.float().clamp(0, 1)
 
@@ -112,7 +136,7 @@ class TvGlitch:
             raise
 
     def process_frame(self, src, subcarrier_amplitude, video_noise, video_chroma_noise,
-                     video_chroma_phase_noise, video_chroma_loss, composite_preemphasis):
+                     video_chroma_phase_noise, video_chroma_loss, composite_preemphasis, rng):
         h, w, _ = src.shape
 
         fY, fI, fQ = self.rgb_to_yiq(src)
@@ -123,19 +147,19 @@ class TvGlitch:
             self.apply_preemphasis(fY, w, h, composite_preemphasis)
 
         if video_noise != 0:
-            self.apply_video_noise(fY, h, w, video_noise)
+            self.apply_video_noise(fY, h, w, video_noise, rng)
 
         self.chroma_from_luma(fY, fI, fQ, w, h, subcarrier_amplitude)
 
         if video_chroma_noise != 0:
-            self.apply_chroma_noise(fI, fQ, h, w, video_chroma_noise)
+            self.apply_chroma_noise(fI, fQ, h, w, video_chroma_noise, rng)
 
         if video_chroma_phase_noise != 0:
-            self.apply_chroma_phase_noise(fI, fQ, h, w, video_chroma_phase_noise)
+            self.apply_chroma_phase_noise(fI, fQ, h, w, video_chroma_phase_noise, rng)
 
         if video_chroma_loss != 0:
             # Vectorized: generate mask for all rows at once
-            mask = np.random.rand(h) < video_chroma_loss
+            mask = rng.random(h) < video_chroma_loss
             fI[mask, :] = 0
             fQ[mask, :] = 0
 
@@ -153,7 +177,7 @@ class TvGlitch:
         r = y + 0.956 * i + 0.621 * q
         g = y - 0.272 * i - 0.647 * q
         b = y - 1.106 * i + 1.703 * q
-        return np.clip(np.stack([r, g, b], axis=-1), 0, 1)
+        return np.clip(np.stack([r, g, b], axis=-1), 0, 1).astype(np.float32)
 
     def composite_lowpass(self, fI, fQ, w, h):
         """Apply cascaded IIR lowpass + delay to chroma channels — vectorized per row."""
@@ -189,23 +213,23 @@ class TvGlitch:
         highpassed = fY - lowpassed
         fY += highpassed * composite_preemphasis
 
-    def apply_video_noise(self, fY, h, w, video_noise):
+    def apply_video_noise(self, fY, h, w, video_noise, rng):
         """Apply correlated video noise using IIR random walk — vectorized.
 
         Original: noise += (randint(mod) - base); noise /= 2; fY[i] += noise
         This is: noise[n] = 0.5 * noise[n-1] + delta[n]
         """
         noise_mod = video_noise * 2 + 1
-        deltas = np.random.randint(0, noise_mod, size=h * w).astype(np.float64) - video_noise
+        deltas = rng.integers(0, noise_mod, size=h * w).astype(np.float64) - video_noise
         noise_signal = _iir_noise_signal(deltas)
         fY += noise_signal.reshape(h, w)
 
-    def apply_chroma_noise(self, fI, fQ, h, w, video_chroma_noise):
+    def apply_chroma_noise(self, fI, fQ, h, w, video_chroma_noise, rng):
         """Apply correlated chroma noise — vectorized."""
         noise_mod = video_chroma_noise * 2 + 1
 
-        deltas_i = np.random.randint(0, noise_mod, size=h * w).astype(np.float64) - video_chroma_noise
-        deltas_q = np.random.randint(0, noise_mod, size=h * w).astype(np.float64) - video_chroma_noise
+        deltas_i = rng.integers(0, noise_mod, size=h * w).astype(np.float64) - video_chroma_noise
+        deltas_q = rng.integers(0, noise_mod, size=h * w).astype(np.float64) - video_chroma_noise
 
         noise_i = _iir_noise_signal(deltas_i).reshape(h, w)
         noise_q = _iir_noise_signal(deltas_q).reshape(h, w)
@@ -213,12 +237,12 @@ class TvGlitch:
         fI += noise_i
         fQ += noise_q
 
-    def apply_chroma_phase_noise(self, fI, fQ, h, w, video_chroma_phase_noise):
+    def apply_chroma_phase_noise(self, fI, fQ, h, w, video_chroma_phase_noise, rng):
         """Apply chroma phase rotation per scanline — vectorized inner loop."""
         noise_mod = (video_chroma_phase_noise * 2) + 1
 
         # Per-row noise using IIR random walk (only h values, not h*w)
-        deltas = np.random.randint(0, noise_mod, size=h).astype(np.float64) - video_chroma_phase_noise
+        deltas = rng.integers(0, noise_mod, size=h).astype(np.float64) - video_chroma_phase_noise
         noise = _iir_noise_signal(deltas)
 
         pi_vals = (noise * np.pi) / 100.0
@@ -232,60 +256,58 @@ class TvGlitch:
         fQ[:] = u * sinpi + v * cospi
 
     def chroma_from_luma(self, fY, fI, fQ, w, h, subcarrier_amplitude):
-        """Extract chroma from composite luma signal — partially vectorized."""
+        """Extract chroma from composite luma signal — vectorized across rows."""
         sign_pattern = np.tile([1, 1, -1, -1], (w + 3) // 4)[:w].astype(np.float64)
         even_indices = np.arange(0, w - 1, 2)
         odd_indices = np.arange(0, w - 2, 2)
 
-        for y in range(h):
-            row = fY[y].copy()
+        # 4-tap moving average with lookahead
+        # Pad for the delay line behavior: [0, 0, row[0], row[1], ...]
+        padded = np.pad(fY, ((0, 0), (2, 2)), mode='constant')
+        # Cumulative sum trick for box filter of width 4
+        cs = np.cumsum(padded, axis=1)
+        # sum of 4 elements ending at position i
+        smoothed = (cs[:, 4:4 + w] - cs[:, :w]) / 4.0
 
-            # 4-tap moving average with lookahead
-            # Pad for the delay line behavior: [0, 0, row[0], row[1], ...]
-            padded = np.concatenate([np.zeros(2), row, np.zeros(2)])
-            # Cumulative sum trick for box filter of width 4
-            cs = np.cumsum(padded)
-            # sum of 4 elements ending at position i
-            smoothed = (cs[4:4 + w] - cs[:w]) / 4.0
+        chroma = fY - smoothed
+        fY[:] = smoothed
 
-            chroma = row - smoothed
-            fY[y] = smoothed
+        # Sign-flip every other pair
+        chroma *= sign_pattern[np.newaxis, :]
 
-            # Sign-flip every other pair
-            chroma *= sign_pattern
+        chroma = (chroma * 50) / subcarrier_amplitude
 
-            chroma = (chroma * 50) / subcarrier_amplitude
+        # Assign I and Q from interleaved chroma
+        fI[:, even_indices] = -chroma[:, even_indices]
+        q_src = even_indices + 1
+        valid = q_src < w
+        fQ[:, even_indices[valid]] = -chroma[:, q_src[valid]]
 
-            # Assign I and Q from interleaved chroma
-            fI[y, even_indices] = -chroma[even_indices]
-            q_src = even_indices + 1
-            valid = q_src < w
-            fQ[y, even_indices[valid]] = -chroma[q_src[valid]]
+        # Interpolate odd positions
+        if len(odd_indices) > 0:
+            next_even = np.minimum(odd_indices + 2, w - 1)
+            fI[:, odd_indices + 1] = (fI[:, odd_indices] + fI[:, next_even]) / 2
+            fQ[:, odd_indices + 1] = (fQ[:, odd_indices] + fQ[:, next_even]) / 2
 
-            # Interpolate odd positions
-            if len(odd_indices) > 0:
-                next_even = np.minimum(odd_indices + 2, w - 1)
-                fI[y, odd_indices + 1] = (fI[y, odd_indices] + fI[y, next_even]) / 2
-                fQ[y, odd_indices + 1] = (fQ[y, odd_indices] + fQ[y, next_even]) / 2
-
-    def render_scanlines(self, img, scale):
+    def render_scanlines(self, img, scale, rng):
         h, w, _ = img.shape
         scanline_img = np.zeros_like(img)
 
         # Vectorized scanline pattern
         y_indices = np.arange(0, h, 3)
-        scanline_img[y_indices, :, 0] = np.random.uniform(0.8, 0.9, size=(len(y_indices), 1))
+        scanline_img[y_indices, :, 0] = rng.uniform(0.8, 0.9, size=(len(y_indices), 1))
         y1 = y_indices + 1
         y1 = y1[y1 < h]
-        scanline_img[y1, :, 1] = np.random.uniform(0.8, 0.9, size=(len(y1), 1))
+        scanline_img[y1, :, 1] = rng.uniform(0.8, 0.9, size=(len(y1), 1))
         y2 = y_indices + 2
         y2 = y2[y2 < h]
-        scanline_img[y2, :, 2] = np.random.uniform(0.8, 0.9, size=(len(y2), 1))
+        scanline_img[y2, :, 2] = rng.uniform(0.8, 0.9, size=(len(y2), 1))
 
+        small_size = (max(1, int(h / scale)), max(1, int(w / scale)))
         blurred = F.interpolate(torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0),
-                              scale_factor=1 / scale, mode='bilinear', align_corners=False)
+                              size=small_size, mode='bilinear', align_corners=False)
         blurred = F.interpolate(blurred, size=(h, w), mode='bilinear', align_corners=False)
-        blurred = blurred.squeeze().permute(1, 2, 0).numpy()
+        blurred = blurred.squeeze(0).permute(1, 2, 0).numpy()
 
         result = img * 0.7 + blurred * 0.3 + scanline_img * 0.15
-        return np.clip(result, 0, 1)
+        return np.clip(result, 0, 1).astype(np.float32)

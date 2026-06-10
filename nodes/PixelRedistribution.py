@@ -21,7 +21,7 @@ class PixelRedistribution:
                 "color_size": ("INT", {
                     "default": 64,
                     "min": 2,
-                    "max": 256,
+                    "max": 128,
                     "step": 1
                 }),
                 "order": ("STRING", {"default": "0,1,2"}),
@@ -43,7 +43,8 @@ class PixelRedistribution:
                     "max": 1.0,
                     "step": 0.1
                 }),
-                "invert": ("BOOLEAN", {"default": False})
+                "invert": ("BOOLEAN", {"default": False}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff})
             }
         }
 
@@ -62,7 +63,7 @@ class PixelRedistribution:
             adjusted = adjusted * (1 + brightness)
         return np.clip(adjusted, 0, 1)
 
-    def calculate_distance_map(self, width, height, mode, pattern, strength):
+    def calculate_distance_map(self, width, height, mode, pattern, strength, rng=None):
         """Compute spatial distance for every pixel — fully vectorized."""
         ys, xs = np.mgrid[0:height, 0:width]
         x = xs.astype(np.float64)
@@ -75,7 +76,7 @@ class PixelRedistribution:
         elif mode == "left":
             base = x.copy()
         elif mode == "random":
-            base = np.random.rand(height, width)
+            base = rng.random((height, width)) if rng is not None else np.zeros((height, width))
         else:
             base = np.zeros((height, width))
 
@@ -89,7 +90,14 @@ class PixelRedistribution:
 
         return base * strength
 
-    def process_single_image(self, image_np, color_size, order, distance_mode, pattern, strength, contrast, brightness, invert):
+    def normalize_distance_map(self, dist_map):
+        d_min = dist_map.min()
+        d_max = dist_map.max()
+        if d_max > d_min:
+            return (dist_map - d_min) / (d_max - d_min)
+        return np.zeros_like(dist_map)
+
+    def process_single_image(self, image_np, color_size, order, norm_dist, strength, contrast, brightness, invert):
         """Process a single [H, W, C] numpy image — fully vectorized."""
         height, width, channels = image_np.shape
         n_ch = min(channels, 3)
@@ -103,30 +111,29 @@ class PixelRedistribution:
         # Quantize to color_size levels
         quantized = np.floor(process_image[:, :, :n_ch] * (cs - 1)).astype(np.int32)
 
-        # Spatial distance map — pixels far from the origin are more likely to shift color
-        dist_map = self.calculate_distance_map(width, height, distance_mode, pattern, strength)
-        d_max = dist_map.max()
-        norm_dist = dist_map / d_max if d_max > 0 else np.zeros_like(dist_map)
-
         # --- Vectorized diffusion: pixels flow from dense to sparse colors ---
         # Far-from-origin pixels move first, creating the spatial pattern.
         n_passes = max(1, int(strength * 5))
         dist_threshold = max(0.0, 1.0 - strength * 0.5)
         current_q = quantized.copy()
 
+        # Preallocate one population grid and reuse it across passes
+        pop_grid_flat = np.zeros(cs ** n_ch, dtype=np.int64)
+        pop_grid = pop_grid_flat.reshape(cs, cs, cs) if n_ch >= 3 else pop_grid_flat
+
         for pass_num in range(n_passes):
             q0 = current_q[:, :, 0]
             q1 = current_q[:, :, 1] if n_ch >= 2 else q0
             q2 = current_q[:, :, 2] if n_ch >= 3 else q0
 
-            # Population grid via bincount
+            # Population grid via bincount into the reusable buffer
             enc = q0 * cs * cs + q1 * cs + q2 if n_ch >= 3 else q0
-            pop_grid_flat = np.bincount(enc.ravel(), minlength=cs ** n_ch)
+            counts = np.bincount(enc.ravel())
+            pop_grid_flat[:] = 0
+            pop_grid_flat[:counts.size] = counts
             if n_ch >= 3:
-                pop_grid = pop_grid_flat.reshape(cs, cs, cs)
                 pixel_pop = pop_grid[q0, q1, q2]
             else:
-                pop_grid = pop_grid_flat
                 pixel_pop = pop_grid[q0]
 
             # Compute populations of all adjacent colors (per channel order × ±1)
@@ -189,15 +196,15 @@ class PixelRedistribution:
 
             current_q = new_q
 
-        # Build output
-        output = np.zeros_like(image_np)
+        # Build output, passing any extra channels (e.g. alpha) through unchanged
+        output = image_np.copy()
         output[:, :, :n_ch] = current_q.astype(np.float32) / (cs - 1)
         if invert:
             output[:, :, :n_ch] = 1.0 - output[:, :, :n_ch]
 
         return output
 
-    def redistribute_pixels(self, image, color_size, order, distance_mode, pattern, strength, contrast, brightness, invert):
+    def redistribute_pixels(self, image, color_size, order, distance_mode, pattern, strength, contrast, brightness, invert, seed):
         try:
             if not isinstance(image, torch.Tensor):
                 raise ValueError("Input image must be a torch.Tensor")
@@ -214,20 +221,28 @@ class PixelRedistribution:
 
             # Convert to numpy once for the whole batch
             image_np = image.cpu().numpy().astype(np.float32)
-            if image_np.max() > 1.0:
-                image_np = image_np / 255.0
 
-            batch_size = image_np.shape[0]
+            batch_size, height, width = image_np.shape[:3]
             processed_images = []
+
+            # Distance map is batch-invariant except in random mode
+            norm_dist = None
+            if distance_mode != "random":
+                dist_map = self.calculate_distance_map(width, height, distance_mode, pattern, strength)
+                norm_dist = self.normalize_distance_map(dist_map)
 
             pbar = comfy.utils.ProgressBar(batch_size)
             for i in range(batch_size):
+                if distance_mode == "random":
+                    rng = np.random.default_rng(seed + i)
+                    dist_map = self.calculate_distance_map(width, height, distance_mode, pattern, strength, rng)
+                    norm_dist = self.normalize_distance_map(dist_map)
+
                 processed_image = self.process_single_image(
                     image_np[i],
                     color_size,
                     order,
-                    distance_mode,
-                    pattern,
+                    norm_dist,
                     strength,
                     contrast,
                     brightness,
