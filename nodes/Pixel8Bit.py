@@ -148,7 +148,7 @@ def _bayer_matrix(n: int) -> np.ndarray:
                       [15,  7, 13,  5]], dtype=np.float32)
     elif n == 8:
         # construct 8 via recursive pattern
-        M2 = _bayer_matrix(4)
+        M2 = _bayer_matrix(4) * 16 - 0.5
         M = np.block([
             [4*M2 + 0,  4*M2 + 2],
             [4*M2 + 3,  4*M2 + 1]
@@ -375,7 +375,7 @@ class Pixel8Bit:
                 }),
                 "k_colors": ("INT", {"default": 8, "min": 2, "max": 256, "step": 1}),
                 "dithering": (["None", "Ordered", "Floyd-Steinberg"],),
-                "ordered_size": ("INT", {"default": 4, "min": 2, "max": 8, "step": 2}),
+                "ordered_size": ([2, 4, 8], {"default": 4}),
                 "posterize_bits": ("INT", {"default": 8, "min": 1, "max": 8, "step": 1}),
                 "gamma": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 3.0, "step": 0.05}),
             },

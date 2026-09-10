@@ -87,11 +87,10 @@ class FrequencyModulation:
                 demodulated = self.apply_lowpass(demodulated, lowpass3_cutoff)
             pbar.update(1)
 
-            denom = demodulated.max() - demodulated.min()
-            if denom < 1e-8:
-                result = torch.zeros_like(demodulated)
-            else:
-                result = (demodulated - demodulated.min()) / denom
+            minimum = demodulated.amin(dim=(1, 2, 3), keepdim=True)
+            denom = demodulated.amax(dim=(1, 2, 3), keepdim=True) - minimum
+            result = torch.where(denom < 1e-8, torch.zeros_like(demodulated),
+                                 (demodulated - minimum) / denom.clamp_min(1e-8))
             if negate:
                 result = 1 - result
 
@@ -116,9 +115,23 @@ class FrequencyModulation:
             raise
 
     def apply_lowpass(self, signal, cutoff):
-        kernel = torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=torch.float32, device=signal.device) / 16
-        kernel = kernel.view(1, 1, 3, 3).repeat(signal.shape[1], 1, 1, 1)
-        return F.conv2d(signal, kernel, padding=1, groups=signal.shape[1])
+        # Cutoff is a fraction of Nyquist. A Gaussian has half-power
+        # response at the requested cutoff; 1.0 bypasses filtering.
+        if cutoff >= 1.0:
+            return signal
+        import math
+        sigma = math.sqrt(math.log(2.0)) / (math.pi * max(cutoff, 0.01))
+        radius = max(1, math.ceil(3 * sigma))
+        x = torch.arange(-radius, radius + 1, device=signal.device, dtype=signal.dtype)
+        weights = torch.exp(-0.5 * (x / sigma) ** 2)
+        weights = weights / weights.sum()
+        channels = signal.shape[1]
+        horizontal = weights.view(1, 1, 1, -1).expand(channels, 1, 1, -1)
+        vertical = weights.view(1, 1, -1, 1).expand(channels, 1, -1, 1)
+        result = F.conv2d(F.pad(signal, (radius, radius, 0, 0), mode='replicate'),
+                          horizontal, groups=channels)
+        return F.conv2d(F.pad(result, (0, 0, radius, radius), mode='replicate'),
+                        vertical, groups=channels)
 
     def apply_blend_mode(self, img1, img2, mode):
         if mode == "ADD":

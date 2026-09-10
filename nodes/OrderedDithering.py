@@ -224,6 +224,8 @@ class OrderedDithering:
                     y_coords, x_coords = np.meshgrid(np.arange(H), np.arange(W), indexing='ij')
                     offset_grid = (y_coords + x_coords) / (H + W)
                 pattern = (pattern + (threshold_offset + offset_grid) % 1.0) % 1.0
+            if dither_type != "Artistic":
+                pattern = np.clip(0.5 + (pattern - 0.5) * pattern_contrast, 0, 1)
             return pattern
 
         try:

@@ -35,13 +35,15 @@ class VideoModulation:
         y = torch.arange(height, device=device).float()
         x = torch.arange(width, device=device).float()
         
+        # Keep every density below Nyquist; higher values produce tighter lines.
+        frequency = density / 24.0
         # Create scan line pattern
-        scan_pattern = torch.sin(y * np.pi * density / 2) * 0.5 + 0.5
+        scan_pattern = torch.sin(y * (2 * np.pi * frequency)) * 0.5 + 0.5
         scan_pattern = scan_pattern.unsqueeze(1).expand(-1, width)
         
         # Create dot pattern
-        dot_y = torch.sin(y.view(-1, 1) * np.pi * density / 2)
-        dot_x = torch.sin(x.view(1, -1) * np.pi * density / 2)
+        dot_y = torch.sin(y.view(-1, 1) * (2 * np.pi * frequency))
+        dot_x = torch.sin(x.view(1, -1) * (2 * np.pi * frequency))
         dot_pattern = (dot_y * dot_x) * 0.5 + 0.5
         
         return scan_pattern * dot_pattern

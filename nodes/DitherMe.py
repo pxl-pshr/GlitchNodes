@@ -277,7 +277,8 @@ class DitherMe:
         if matrix_size not in self.ordered_matrices:
             matrix_size = "4x4"
 
-        return self._matrix_dither(self._to_gray(image), self.ordered_matrices[matrix_size], effect_size)
+        return self._matrix_dither(self._to_gray(image) + 0.5 - threshold,
+                                   self.ordered_matrices[matrix_size], effect_size)
 
     def _get_void_cluster_matrix(self, size):
         """Generate (and cache) a void-and-cluster threshold matrix"""
@@ -491,10 +492,15 @@ class DitherMe:
             padded = np.pad(gray, ((0, blocks_y * cell - height), (0, blocks_x * cell - width)), mode='edge')
             means = padded.reshape(blocks_y, cell, blocks_x, cell).mean(axis=(1, 3))
 
-            radius = np.floor(cell * means / 2.0)
-            offsets = np.arange(cell) - cell // 2
+            # Rank cell pixels from the center outward, then fill in proportion
+            # to brightness. This preserves black/white even in one-pixel cells.
+            offsets = np.arange(cell) - (cell - 1) / 2.0
             dist2 = offsets[:, None] ** 2 + offsets[None, :] ** 2
-            mask = dist2[None, None, :, :] <= (radius ** 2)[:, :, None, None]
+            order = np.argsort(dist2.ravel(), kind='stable')
+            ranks = np.empty(cell * cell, dtype=np.int64)
+            ranks[order] = np.arange(cell * cell)
+            coverage = np.floor(np.clip(means, 0, 1) * cell * cell + 0.5)
+            mask = ranks.reshape(cell, cell)[None, None, :, :] < coverage[:, :, None, None]
             output = mask.astype(np.float64).transpose(0, 2, 1, 3).reshape(blocks_y * cell, blocks_x * cell)[:height, :width]
 
         elif algorithm == "modulation":
